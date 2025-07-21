@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "chain-deployment": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "BACKEND_URL": "http://localhost:3000",
+        "BACKEND_API_KEY": ""
+      }
+    }
+  }
+} 
