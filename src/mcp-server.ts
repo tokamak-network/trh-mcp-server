@@ -7,10 +7,29 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { BackendClient } from './services/backend-client.js';
 import { ChainDeploymentRequest } from './types/chain-deployment.js';
+import { generateAccountsFromSeedPhrase } from './lib/utils/wallet.js';
+import { Account } from './lib/models/index.js';
+import { getSupportedAwsRegions, validateAwsCredentials } from './lib/utils/aws.js';
+import { verifyL1BeaconUrl, verifyL1RpcUrl } from './lib/utils/rpc.js';
 
+const ChainConfiguration = {
+  "Mainnet": {
+    challengePeriod: 604800, // 604800 seconds (7 days)
+    l2BlockTime: 6,
+    outputRootFrequency: 6 * 10800, // 10800 * l2BlockTime
+    batchSubmissionFrequency: 12 * 1500 // 1500 * L1 block time (12 seconds)
+  },
+  "Testnet": {
+    challengePeriod: 12, // 12 seconds
+    l2BlockTime: 6,
+    outputRootFrequency: 6 * 120, // 120 * l2BlockTime
+    batchSubmissionFrequency: 12 * 120 // 120 * L1 block time (12 seconds)
+  }
+}
 class ChainDeploymentMCPServer {
   private server: Server;
-  private backendClient: BackendClient;
+  private backendClient: BackendClient | null = null;
+  private isInitialized: boolean = false;
 
   constructor() {
     this.server = new Server(
@@ -20,12 +39,18 @@ class ChainDeploymentMCPServer {
       },
     );
 
-    // Initialize backend client from environment variables
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';
-    const apiKey = process.env.BACKEND_API_KEY;
-    this.backendClient = new BackendClient(backendUrl, apiKey);
-
     this.setupToolHandlers();
+  }
+
+  private async initializeBackendClient(backendUrl: string, username: string, password: string): Promise<void> {
+    // If already initialized with the same credentials, skip
+    if (this.isInitialized && this.backendClient) {
+      return;
+    }
+
+    this.backendClient = new BackendClient(backendUrl, username, password);
+    await this.backendClient.initialize();
+    this.isInitialized = true;
   }
 
   private setupToolHandlers() {
@@ -34,49 +59,125 @@ class ChainDeploymentMCPServer {
       return {
         tools: [
           {
+            name: 'initialize_backend',
+            description: 'Initialize backend client with credentials (call this first)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' }
+              },
+              required: ['backendUrl', 'username', 'password']
+            }
+          },
+          {
             name: 'deploy_chain',
             description: 'Deploy a new chain with the specified configuration',
             inputSchema: {
               type: 'object',
               properties: {
-                adminAccount: { type: 'string', description: 'Admin account address' },
+                backendUrl: { type: 'string', description: 'Backend server URL (optional if already initialized)' },
+                username: { type: 'string', description: 'Backend username (optional if already initialized)' },
+                password: { type: 'string', description: 'Backend password (optional if already initialized)' },
+                seedPhrase: { type: 'string', description: 'Seed phrase for account generation (optional if using private keys)' },
                 awsAccessKey: { type: 'string', description: 'AWS access key' },
-                awsRegion: { type: 'string', description: 'AWS region' },
-                awsSecretAccessKey: { type: 'string', description: 'AWS secret access key' },
-                batchSubmissionFrequency: { type: 'number', description: 'Batch submission frequency' },
-                batcherAccount: { type: 'string', description: 'Batcher account address' },
-                chainName: { type: 'string', description: 'Name of the chain' },
-                challengePeriod: { type: 'number', description: 'Challenge period in blocks' },
-                deploymentPath: { type: 'string', description: 'Deployment path' },
-                l1BeaconUrl: { type: 'string', description: 'L1 beacon URL' },
-                l1RpcUrl: { type: 'string', description: 'L1 RPC URL' },
-                l2BlockTime: { type: 'number', description: 'L2 block time in seconds' },
-                network: { 
-                  type: 'string', 
-                  enum: ['Mainnet', 'Testnet', 'Devnet'],
-                  description: 'Network type'
+                awsSecretKey: { type: 'string', description: 'AWS secret access key' },
+                awsRegion: {
+                  type: 'string',
+                  description: 'AWS region (restricted list)'
                 },
-                outputRootFrequency: { type: 'number', description: 'Output root frequency' },
-                proposerAccount: { type: 'string', description: 'Proposer account address' },
-                registerCandidate: { type: 'boolean', description: 'Whether to register as candidate' },
+                l1RpcUrl: { type: 'string', description: 'L1 RPC URL' },
+                l1BeaconUrl: { type: 'string', description: 'L1 beacon URL' },
+                // Individual chain configuration fields
+                l2BlockTime: { type: 'number', description: 'L2 block time in seconds' },
+                batchSubmissionFrequency: { 
+                  type: 'number', 
+                  description: 'Batch submission frequency (must be divisible by 12)',
+                  multipleOf: 12
+                },
+                outputRootFrequency: { 
+                  type: 'number', 
+                  description: 'Output root frequency (must be divisible by l2BlockTime)'
+                },
+                challengePeriod: { type: 'number', description: 'Challenge period in blocks' },
+                chainConfiguration: {
+                  type: 'object',
+                  properties: {
+                    challengePeriod: {
+                      type: 'number',
+                      description: 'Challenge period in blocks (default: Mainnet=7 days, Testnet=12 blocks)'
+                    },
+                    l2BlockTime: {
+                      type: 'number',
+                      description: 'L2 block time in seconds (default: Mainnet=2 seconds, Testnet=6 seconds)'
+                    },
+                    outputRootFrequency: {
+                      type: 'number',
+                      description: 'Output root frequency (default: Mainnet=1000 blocks, Testnet=1440 blocks)'
+                    },
+                    batchSubmissionFrequency: {
+                      type: 'number',
+                      description: 'Batch submission frequency (default: Mainnet=100 blocks, Testnet=1440 blocks)'
+                    }
+                  },
+                  description: 'Chain configuration parameters. Defaults vary by network type.'
+                },
+                chainName: { type: 'string', description: 'Name of the chain' },
+                network: {
+                  type: 'string',
+                  enum: ['Mainnet', 'Testnet', 'mainnet', 'testnet'],
+                  description: 'Network type (Mainnet or Testnet)'
+                },
+                registerCandidate: { type: 'boolean', description: 'Whether to enable register candidate' },
                 registerCandidateParams: {
                   type: 'object',
                   properties: {
-                    amount: { type: 'number', description: 'Registration amount' },
+                    amount: { 
+                      type: 'number', 
+                      description: 'Registration amount (must be > 1000 when registerCandidate is true)',
+                      minimum: 1000.01
+                    },
                     memo: { type: 'string', description: 'Registration memo' },
                     nameInfo: { type: 'string', description: 'Registration name info' }
                   },
                   required: ['amount', 'memo', 'nameInfo']
                 },
-                sequencerAccount: { type: 'string', description: 'Sequencer account address' }
+                // Account fields - provide either indices (with seedPhrase) or private keys directly
+                adminAccountIndex: {
+                  type: 'number',
+                  description: 'Index of admin account from generated accounts (0-9, requires seedPhrase)',
+                  minimum: 0,
+                  maximum: 9
+                },
+                sequencerAccountIndex: {
+                  type: 'number',
+                  description: 'Index of sequencer account from generated accounts (0-9, requires seedPhrase)',
+                  minimum: 0,
+                  maximum: 9
+                },
+                batcherAccountIndex: {
+                  type: 'number',
+                  description: 'Index of batcher account from generated accounts (0-9, requires seedPhrase)',
+                  minimum: 0,
+                  maximum: 9
+                },
+                proposerAccountIndex: {
+                  type: 'number',
+                  description: 'Index of proposer account from generated accounts (0-9, requires seedPhrase)',
+                  minimum: 0,
+                  maximum: 9
+                },
+                // Private key fields (alternative to indices)
+                adminAccount: { type: 'string', description: 'Admin account private key (64 hex characters, alternative to adminAccountIndex)' },
+                sequencerAccount: { type: 'string', description: 'Sequencer account private key (64 hex characters, alternative to sequencerAccountIndex)' },
+                batcherAccount: { type: 'string', description: 'Batcher account private key (64 hex characters, alternative to batcherAccountIndex)' },
+                proposerAccount: { type: 'string', description: 'Proposer account private key (64 hex characters, alternative to proposerAccountIndex)' }
               },
-              required: [
-                'adminAccount', 'awsAccessKey', 'awsRegion', 'awsSecretAccessKey',
-                'batchSubmissionFrequency', 'batcherAccount', 'chainName', 'challengePeriod',
-                'deploymentPath', 'l1BeaconUrl', 'l1RpcUrl', 'l2BlockTime', 'network',
-                'outputRootFrequency', 'proposerAccount', 'registerCandidate',
-                'registerCandidateParams', 'sequencerAccount'
-              ]
+                              required: [
+                  'awsAccessKey', 'awsSecretKey', 'awsRegion',
+                  'l1RpcUrl', 'l1BeaconUrl', 'chainName', 'network', 'registerCandidate'
+                ]
             }
           },
           {
@@ -85,9 +186,12 @@ class ChainDeploymentMCPServer {
             inputSchema: {
               type: 'object',
               properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
                 deploymentId: { type: 'string', description: 'Deployment ID to check' }
               },
-              required: ['deploymentId']
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
             }
           },
           {
@@ -95,7 +199,12 @@ class ChainDeploymentMCPServer {
             description: 'List all chain deployments',
             inputSchema: {
               type: 'object',
-              properties: {}
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' }
+              },
+              required: ['backendUrl', 'username', 'password']
             }
           },
           {
@@ -104,9 +213,12 @@ class ChainDeploymentMCPServer {
             inputSchema: {
               type: 'object',
               properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
                 deploymentId: { type: 'string', description: 'Deployment ID to cancel' }
               },
-              required: ['deploymentId']
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
             }
           },
           {
@@ -115,9 +227,27 @@ class ChainDeploymentMCPServer {
             inputSchema: {
               type: 'object',
               properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
                 chainId: { type: 'string', description: 'Chain ID to get info for' }
               },
-              required: ['chainId']
+              required: ['backendUrl', 'username', 'password', 'chainId']
+            }
+          },
+          {
+            name: 'get_accounts_from_seed',
+            description: 'Generate 10 accounts from seed phrase and fetch their balances from RPC',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                seedPhrase: { type: 'string', description: 'Seed phrase to generate accounts from' },
+                l1RpcUrl: { type: 'string', description: 'L1 RPC URL to check balances' }
+              },
+              required: ['backendUrl', 'username', 'password', 'seedPhrase', 'l1RpcUrl']
             }
           },
           {
@@ -125,7 +255,12 @@ class ChainDeploymentMCPServer {
             description: 'Test connection to the backend server',
             inputSchema: {
               type: 'object',
-              properties: {}
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' }
+              },
+              required: ['backendUrl', 'username', 'password']
             }
           }
         ] as Tool[]
@@ -136,30 +271,39 @@ class ChainDeploymentMCPServer {
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
+      console.error(`🔧 Tool called: ${name}`);
+
       try {
         switch (name) {
+          case 'initialize_backend':
+            return await this.handleInitializeBackend(args as { backendUrl: string; username: string; password: string });
+
           case 'deploy_chain':
-            return await this.handleDeployChain(args as ChainDeploymentRequest);
+            return await this.handleDeployChain(args as any);
 
           case 'get_deployment_status':
-            return await this.handleGetDeploymentStatus(args as { deploymentId: string });
+            return await this.handleGetDeploymentStatus(args as { backendUrl: string; username: string; password: string; deploymentId: string });
 
           case 'list_deployments':
-            return await this.handleListDeployments();
+            return await this.handleListDeployments(args as { backendUrl: string; username: string; password: string });
 
           case 'cancel_deployment':
-            return await this.handleCancelDeployment(args as { deploymentId: string });
+            return await this.handleCancelDeployment(args as { backendUrl: string; username: string; password: string; deploymentId: string });
 
           case 'get_chain_info':
-            return await this.handleGetChainInfo(args as { chainId: string });
+            return await this.handleGetChainInfo(args as { backendUrl: string; username: string; password: string; chainId: string });
+
+          case 'get_accounts_from_seed':
+            return await this.handleGetAccountsFromSeed(args as { backendUrl: string; username: string; password: string; seedPhrase: string; l1RpcUrl: string });
 
           case 'test_backend_connection':
-            return await this.handleTestConnection();
+            return await this.handleTestConnection(args as { backendUrl: string; username: string; password: string });
 
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
+        console.error(`❌ Error in tool ${name}:`, error);
         return {
           content: [
             {
@@ -172,24 +316,246 @@ class ChainDeploymentMCPServer {
     });
   }
 
-  private async handleDeployChain(args: ChainDeploymentRequest) {
-    const result = await this.backendClient.deployChain(args);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Chain deployment ${result.success ? 'initiated successfully' : 'failed'}. ${
-            result.deploymentId ? `Deployment ID: ${result.deploymentId}` : ''
-          } ${result.message || ''}`
-        }
-      ]
-    };
+  private async handleInitializeBackend(args: { backendUrl: string; username: string; password: string }) {
+    try {
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `✅ Backend client initialized successfully!\n📡 Backend URL: ${args.backendUrl}\n👤 Username: ${args.username}\n\nYou can now use other tools without providing credentials.`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Failed to initialize backend client: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
   }
 
-  private async handleGetDeploymentStatus(args: { deploymentId: string }) {
+  private async handleDeployChain(args: any) {
+    console.error('🚀 Starting chain deployment process...');
+    try {
+      // Initialize backend client if credentials provided or use existing one
+      if (args.backendUrl && args.username && args.password) {
+        console.error('📡 Initializing backend client with provided credentials...');
+        await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+      } else if (!this.isInitialized || !this.backendClient) {
+        throw new Error('Backend client not initialized. Please call initialize_backend first or provide credentials.');
+      }
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      console.error('🔐 Validating AWS credentials...');
+      // --- AWS credentials and region verification ---
+      const awsSecretKey = args.awsSecretKey || args.awsSecretKey;
+      const awsValidation = await validateAwsCredentials(args.awsAccessKey, awsSecretKey, args.awsRegion);
+      if (!awsValidation.isValid) {
+        throw new Error(`AWS credentials validation failed: ${awsValidation.error}`);
+      }
+
+      const validAwsRegions = await getSupportedAwsRegions(args.awsAccessKey, awsSecretKey);
+      if (!validAwsRegions.includes(args.awsRegion)) {
+        throw new Error(`AWS credentials are not valid for region: ${args.awsRegion}. Valid regions: ${validAwsRegions.join(', ')}`);
+      }
+
+      console.error(`✅ AWS credentials validated successfully. Account ID: ${awsValidation.accountId}, Region: ${args.awsRegion}`);
+      // --- End AWS verification ---
+
+      console.error('🌐 Validating L1 RPC URL...');
+      // verify l1 rpc url
+      const l1RpcValidation = await verifyL1RpcUrl(args.l1RpcUrl);
+      if (!l1RpcValidation.isValid) {
+        throw new Error(`L1 RPC URL validation failed: ${l1RpcValidation.error}`);
+      }
+
+      // verify l1 beacon url
+      const l1BeaconValidation = await verifyL1BeaconUrl(args.l1BeaconUrl);
+      if (!l1BeaconValidation.isValid) {
+        throw new Error(`L1 beacon URL validation failed: ${l1BeaconValidation.error}`);
+      }
+
+      console.error('✅ L1 beacon URL validation successful');
+
+      // Handle account validation - check if using indices or private keys
+      const hasPrivateKeys = args.adminAccount || args.sequencerAccount || args.batcherAccount || args.proposerAccount;
+      
+      if (hasPrivateKeys) {
+        console.error('🔑 Using provided private keys for accounts');
+        // Validate private key format
+        if (args.adminAccount && !args.adminAccount.match(/^[0-9a-fA-F]{64}$/)) {
+          throw new Error('Invalid admin account private key format');
+        }
+        if (args.sequencerAccount && !args.sequencerAccount.match(/^[0-9a-fA-F]{64}$/)) {
+          throw new Error('Invalid sequencer account private key format');
+        }
+        if (args.batcherAccount && !args.batcherAccount.match(/^[0-9a-fA-F]{64}$/)) {
+          throw new Error('Invalid batcher account private key format');
+        }
+        if (args.proposerAccount && !args.proposerAccount.match(/^[0-9a-fA-F]{64}$/)) {
+          throw new Error('Invalid proposer account private key format');
+        }
+        console.error('✅ Private key format validation successful');
+      } else {
+        console.error('👤 Generating accounts from seed phrase...');
+        if (!args.seedPhrase) {
+          throw new Error('Seed phrase is required when using account indices');
+        }
+        // First, validate account balances
+        const accounts = await generateAccountsFromSeedPhrase(args.seedPhrase, args.l1RpcUrl);
+
+        console.error(`✅ Generated ${accounts.length} accounts from seed phrase`);
+
+        // Check if selected accounts have sufficient balance
+        const adminAccount = accounts[args.adminAccountIndex];
+        const sequencerAccount = accounts[args.sequencerAccountIndex];
+        const batcherAccount = accounts[args.batcherAccountIndex];
+        const proposerAccount = accounts[args.proposerAccountIndex];
+
+        console.error(`🔍 Validating account balances...`);
+        console.error(`   Admin account (${args.adminAccountIndex}): ${adminAccount?.address} - Balance: ${adminAccount?.balance || 0}`);
+        console.error(`   Sequencer account (${args.sequencerAccountIndex}): ${sequencerAccount?.address} - Balance: ${sequencerAccount?.balance || 0}`);
+        console.error(`   Batcher account (${args.batcherAccountIndex}): ${batcherAccount?.address} - Balance: ${batcherAccount?.balance || 0}`);
+        console.error(`   Proposer account (${args.proposerAccountIndex}): ${proposerAccount?.address} - Balance: ${proposerAccount?.balance || 0}`);
+
+        if (!adminAccount || adminAccount.balance <= 0) {
+          throw new Error(`Admin account (index ${args.adminAccountIndex}) must have balance > 0. Current balance: ${adminAccount?.balance || 0}`);
+        }
+
+        if (!batcherAccount || batcherAccount.balance <= 0) {
+          throw new Error(`Batcher account (index ${args.batcherAccountIndex}) must have balance > 0. Current balance: ${batcherAccount?.balance || 0}`);
+        }
+
+        if (!proposerAccount || proposerAccount.balance <= 0) {
+          throw new Error(`Proposer account (index ${args.proposerAccountIndex}) must have balance > 0. Current balance: ${proposerAccount?.balance || 0}`);
+        }
+
+        console.error('✅ Account balance validation successful');
+
+        // Convert indices to private keys for the payload
+        args.adminAccount = adminAccount.privateKey;
+        args.sequencerAccount = sequencerAccount.privateKey;
+        args.batcherAccount = batcherAccount.privateKey;
+        args.proposerAccount = proposerAccount.privateKey;
+      }
+
+      // Apply network-specific default values for chain configuration if not provided
+      const getDefaultChainConfig = (network: 'Mainnet' | 'Testnet') => {
+        if (network === 'Mainnet') {
+          return ChainConfiguration.Mainnet;
+        } else {
+          // Testnet defaults
+          return ChainConfiguration.Testnet;
+        }
+      };
+
+      // Check if individual chain configuration fields are provided
+      let chainConfig = args.chainConfiguration;
+      if (!chainConfig) {
+        if (args.l2BlockTime !== undefined || args.batchSubmissionFrequency !== undefined || 
+            args.outputRootFrequency !== undefined || args.challengePeriod !== undefined) {
+          chainConfig = {
+            l2BlockTime: args.l2BlockTime || getDefaultChainConfig(args.network).l2BlockTime,
+            batchSubmissionFrequency: args.batchSubmissionFrequency || getDefaultChainConfig(args.network).batchSubmissionFrequency,
+            outputRootFrequency: args.outputRootFrequency || getDefaultChainConfig(args.network).outputRootFrequency,
+            challengePeriod: args.challengePeriod || getDefaultChainConfig(args.network).challengePeriod
+          };
+        } else {
+          chainConfig = getDefaultChainConfig(args.network);
+        }
+      }
+
+      console.error(`⚙️  Using chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+
+              // Transform the new schema structure to match backend expectations
+        const backendArgs = {
+          network: (args.network || 'testnet').toLowerCase() as 'mainnet' | 'testnet',
+          l1RpcUrl: args.l1RpcUrl,
+          l1BeaconUrl: args.l1BeaconUrl,
+          awsAccessKey: args.awsAccessKey,
+          awsSecretAccessKey: args.awsSecretKey,
+          awsRegion: args.awsRegion,
+          l2BlockTime: chainConfig.l2BlockTime,
+          batchSubmissionFrequency: chainConfig.batchSubmissionFrequency,
+          outputRootFrequency: chainConfig.outputRootFrequency,
+          challengePeriod: chainConfig.challengePeriod,
+          chainName: args.chainName,
+          registerCandidate: args.registerCandidate,
+          registerCandidateParams: args.registerCandidateParams,
+          // Account private keys (either provided directly or converted from indices)
+          adminAccount: args.adminAccount,
+          sequencerAccount: args.sequencerAccount,
+          batcherAccount: args.batcherAccount,
+          proposerAccount: args.proposerAccount
+        };
+
+      console.error('📋 Preparing deployment arguments...');
+      try {
+        console.error(`📋 Deployment arguments:`, JSON.stringify(backendArgs, null, 2));
+      } catch (jsonError) {
+        console.error('❌ Failed to stringify backendArgs:', jsonError);
+        console.error('📋 backendArgs keys:', Object.keys(backendArgs));
+        // Log each property individually to identify the problematic one
+        Object.entries(backendArgs).forEach(([key, value]) => {
+          try {
+            console.error(`📋 ${key}:`, JSON.stringify(value));
+          } catch (propError) {
+            console.error(`📋 ${key}: [Cannot stringify - ${propError}]`);
+          }
+        });
+      }
+
+      console.error('🚀 Initiating chain deployment...');
+  
+      const result = await this.backendClient.deployChain(backendArgs);
+
+      if (result.status === 200) {
+        console.error(`✅ Deployment initiated successfully! Stack ID: ${result.data.stackId}`);
+      } else {
+        console.error(`❌ Deployment failed: ${result.message}`);
+      }
+
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Chain deployment ${result.status === 200 ? 'initiated successfully' : 'failed'}. ${result.data?.stackId ? `Stack ID: ${result.data.stackId}` : ''
+              } ${result.message || ''}`
+          }
+        ]
+      };
+    } catch (error) {
+      console.error('❌ Deployment failed:', error);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Deployment failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleGetDeploymentStatus(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    // Initialize backend client with provided credentials
+    await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+    if (!this.backendClient) {
+      throw new Error('Failed to initialize backend client');
+    }
     const status = await this.backendClient.getDeploymentStatus(args.deploymentId);
-    
+
     return {
       content: [
         {
@@ -200,13 +566,19 @@ class ChainDeploymentMCPServer {
     };
   }
 
-  private async handleListDeployments() {
+  private async handleListDeployments(args: { backendUrl: string; username: string; password: string }) {
+    // Initialize backend client with provided credentials
+    await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+    if (!this.backendClient) {
+      throw new Error('Failed to initialize backend client');
+    }
     const deployments = await this.backendClient.listDeployments();
-    
-    const deploymentList = deployments.map(d => 
+
+    const deploymentList = deployments.map(d =>
       `- ${d.deploymentId}: ${d.status} (${d.progress || 0}%) - ${d.chainName || 'Unknown'}`
     ).join('\n');
-    
+
     return {
       content: [
         {
@@ -217,9 +589,15 @@ class ChainDeploymentMCPServer {
     };
   }
 
-  private async handleCancelDeployment(args: { deploymentId: string }) {
+  private async handleCancelDeployment(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    // Initialize backend client with provided credentials
+    await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+    if (!this.backendClient) {
+      throw new Error('Failed to initialize backend client');
+    }
     const result = await this.backendClient.cancelDeployment(args.deploymentId);
-    
+
     return {
       content: [
         {
@@ -230,9 +608,15 @@ class ChainDeploymentMCPServer {
     };
   }
 
-  private async handleGetChainInfo(args: { chainId: string }) {
+  private async handleGetChainInfo(args: { backendUrl: string; username: string; password: string; chainId: string }) {
+    // Initialize backend client with provided credentials
+    await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+    if (!this.backendClient) {
+      throw new Error('Failed to initialize backend client');
+    }
     const chainInfo = await this.backendClient.getChainInfo(args.chainId);
-    
+
     return {
       content: [
         {
@@ -243,9 +627,50 @@ class ChainDeploymentMCPServer {
     };
   }
 
-  private async handleTestConnection() {
+  private async handleGetAccountsFromSeed(args: { backendUrl: string; username: string; password: string; seedPhrase: string; l1RpcUrl: string }) {
+    try {
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      const accounts = await generateAccountsFromSeedPhrase(args.seedPhrase, args.l1RpcUrl);
+
+      const accountList = accounts.map((account: Account, index: number) =>
+        `${index}: ${account.address} - Balance: ${account.balance} ETH ${account.balance > 0 ? '✅' : '❌'}`
+      ).join('\n');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Generated accounts from seed phrase:\n${accountList}\n\nUse the index numbers (0-9) to select accounts for deployment.`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error generating accounts: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleTestConnection(args: { backendUrl: string; username: string; password: string }) {
+    // Initialize backend client with provided credentials
+    await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+    if (!this.backendClient) {
+      throw new Error('Failed to initialize backend client');
+    }
     const isConnected = await this.backendClient.testConnection();
-    
+
     return {
       content: [
         {
@@ -257,9 +682,14 @@ class ChainDeploymentMCPServer {
   }
 
   async run() {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error('Chain Deployment MCP Server started');
+    try {
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      console.error('🚀 Chain Deployment MCP Server started successfully');
+    } catch (error) {
+      console.error('❌ Failed to start MCP server:', error);
+      process.exit(1);
+    }
   }
 }
 

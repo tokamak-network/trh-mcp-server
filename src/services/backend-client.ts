@@ -1,23 +1,28 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { 
-  ChainDeploymentRequest, 
-  ChainDeploymentResponse, 
+import {
+  ChainDeploymentResponse,
   ChainDeploymentStatus,
-  ChainDeploymentRequestSchema 
+  BackendDeploymentRequestSchema,
+  AccountInfo
 } from '../types/chain-deployment.js';
 
 export class BackendClient {
   private client: AxiosInstance;
   private baseUrl: string;
+  private username: string;
+  private password: string;
 
-  constructor(baseUrl: string, apiKey?: string) {
+  constructor(baseUrl: string, username: string, password: string) {
     this.baseUrl = baseUrl;
+    this.username = username;
+    this.password = password;
+
+    // Initialize client without auth header initially
     this.client = axios.create({
       baseURL: baseUrl,
       timeout: 30000,
       headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey && { 'Authorization': `Bearer ${apiKey}` })
+        'Content-Type': 'application/json'
       }
     });
 
@@ -32,15 +37,45 @@ export class BackendClient {
   }
 
   /**
+   * Login to get access token
+   */
+  private async login(): Promise<string> {
+    try {
+      const response = await axios.post(`${this.baseUrl}/api/v1/auth/login`, {
+        email: this.username,
+        password: this.password
+      });
+
+      return response.data.token;
+    } catch (error) {
+      throw new Error(`Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Initialize the client with authentication
+   */
+  async initialize(): Promise<void> {
+    try {
+      const token = await this.login();
+
+      // Update the client with the auth token
+      this.client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } catch (error) {
+      throw new Error(`Failed to initialize client: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Deploy a new chain
    */
-  async deployChain(request: ChainDeploymentRequest): Promise<ChainDeploymentResponse> {
+  async deployChain(request: any): Promise<ChainDeploymentResponse> {
     try {
-      // Validate the request
-      const validatedRequest = ChainDeploymentRequestSchema.parse(request);
-      
+      // Validate the request using the backend schema
+      const validatedRequest = BackendDeploymentRequestSchema.parse(request);
+
       const response: AxiosResponse<ChainDeploymentResponse> = await this.client.post(
-        '/api/chain/deploy',
+        '/api/v1/stacks/thanos',
         validatedRequest
       );
 
@@ -59,7 +94,7 @@ export class BackendClient {
   async getDeploymentStatus(deploymentId: string): Promise<ChainDeploymentStatus> {
     try {
       const response: AxiosResponse<ChainDeploymentStatus> = await this.client.get(
-        `/api/chain/deployment/${deploymentId}/status`
+        `/api/v1/stacks/thanos/${deploymentId}`
       );
 
       return response.data;
@@ -77,7 +112,7 @@ export class BackendClient {
   async listDeployments(): Promise<ChainDeploymentStatus[]> {
     try {
       const response: AxiosResponse<ChainDeploymentStatus[]> = await this.client.get(
-        '/api/chain/deployments'
+        '/api/v1/stacks/thanos'
       );
 
       return response.data;
@@ -94,8 +129,8 @@ export class BackendClient {
    */
   async cancelDeployment(deploymentId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.post(
-        `/api/chain/deployment/${deploymentId}/cancel`
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.delete(
+        `/api/v1/stacks/thanos/${deploymentId}`
       );
 
       return response.data;
@@ -130,9 +165,10 @@ export class BackendClient {
    */
   async testConnection(): Promise<boolean> {
     try {
-      await this.client.get('/api/health');
+      await this.client.get('/api/v1/health');
       return true;
     } catch (error) {
+      console.error('Failed to test connection:', error);
       return false;
     }
   }

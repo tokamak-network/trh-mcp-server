@@ -1,10 +1,12 @@
 # Chain Deployment MCP Server
 
-A Model Context Protocol (MCP) server for interacting with a chain deployment backend service. This server provides tools for deploying, monitoring, and managing blockchain chains.
+A Model Context Protocol (MCP) server for interacting with a chain deployment backend service. This server provides tools for deploying, monitoring, and managing blockchain chains with seed phrase account generation and balance checking.
 
 ## Features
 
+- **Seed Phrase Account Generation**: Generate 10 accounts from seed phrase and check balances
 - **Chain Deployment**: Deploy new chains with comprehensive configuration
+- **Network-Specific Defaults**: Automatic defaults based on Mainnet/Testnet selection
 - **Status Monitoring**: Check deployment status and progress
 - **Deployment Management**: List, cancel, and manage deployments
 - **Chain Information**: Retrieve detailed information about deployed chains
@@ -20,120 +22,172 @@ cd trh-mcp-server
 
 2. Install dependencies:
 ```bash
-npm install
+pnpm install
 ```
 
 3. Build the project:
 ```bash
-npm run build
+pnpm run build
 ```
 
 ## Configuration
 
+The MCP server supports two ways to configure backend credentials:
+
+### Option 1: Environment Variables (Recommended for automation)
 Set the following environment variables:
 
-- `BACKEND_URL`: URL of your backend server (default: `http://localhost:3000`)
-- `BACKEND_API_KEY`: API key for backend authentication (optional)
+- `BACKEND_URL`: URL of your backend server (default: `http://localhost:8000`)
+- `BACKEND_USERNAME`: Username for backend authentication
+- `BACKEND_PASSWORD`: Password for backend authentication
 
 Example:
 ```bash
 export BACKEND_URL="https://your-backend-server.com"
-export BACKEND_API_KEY="your-api-key"
+export BACKEND_USERNAME="your-username"
+export BACKEND_PASSWORD="your-password"
+```
+
+### Option 2: Interactive Prompts (Recommended for development)
+If environment variables are not provided, the server will prompt for credentials interactively:
+
+```
+🔐 Backend Authentication Setup
+===============================
+Backend URL (default: http://localhost:8000): 
+Username: 
+Password: 
 ```
 
 ## Usage
 
 ### Running the MCP Server
 
+**Production:**
 ```bash
-npm start
+pnpm start
 ```
 
-Or for development:
+**Development:**
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 ### Available Tools
 
 The MCP server provides the following tools:
 
-#### 1. `deploy_chain`
+#### 1. `get_accounts_from_seed`
+Generate 10 accounts from seed phrase and fetch their balances from RPC.
+
+**Parameters:**
+- `seedPhrase`: Seed phrase to generate accounts from
+- `l1RpcUrl`: L1 RPC URL to check balances
+
+**Example:**
+```json
+{
+  "seedPhrase": "your twelve word seed phrase here",
+  "l1RpcUrl": "https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+}
+```
+
+#### 2. `deploy_chain`
 Deploy a new chain with the specified configuration.
 
 **Parameters:**
-- `adminAccount`: Admin account address
+- `seedPhrase`: Seed phrase for account generation
 - `awsAccessKey`: AWS access key
-- `awsRegion`: AWS region
-- `awsSecretAccessKey`: AWS secret access key
-- `batchSubmissionFrequency`: Batch submission frequency
-- `batcherAccount`: Batcher account address
-- `chainName`: Name of the chain
-- `challengePeriod`: Challenge period in blocks
-- `deploymentPath`: Deployment path
-- `l1BeaconUrl`: L1 beacon URL
+- `awsSecretKey`: AWS secret access key
+- `awsRegion`: AWS region (us-east-1, us-west-2, eu-west-1, ap-southeast-1)
 - `l1RpcUrl`: L1 RPC URL
-- `l2BlockTime`: L2 block time in seconds
-- `network`: Network type (Mainnet, Testnet, Devnet)
-- `outputRootFrequency`: Output root frequency
-- `proposerAccount`: Proposer account address
-- `registerCandidate`: Whether to register as candidate
-- `registerCandidateParams`: Registration parameters
+- `l1BeaconUrl`: L1 beacon URL
+- `chainConfiguration`: Chain configuration (optional, uses network defaults)
+  - `challengePeriod`: Challenge period in blocks
+  - `l2BlockTime`: L2 block time in seconds
+  - `outputRootFrequency`: Output root frequency
+  - `batchSubmissionFrequency`: Batch submission frequency
+- `chainName`: Name of the chain
+- `network`: Network type (Mainnet, Testnet)
+- `registerCandidate`: Whether to enable register candidate
+- `registerCandidateParams`: Registration parameters (required if registerCandidate is true)
   - `amount`: Registration amount
   - `memo`: Registration memo
   - `nameInfo`: Registration name info
-- `sequencerAccount`: Sequencer account address
+- `adminAccountIndex`: Index of admin account (0-9, must have balance > 0)
+- `sequencerAccountIndex`: Index of sequencer account (0-9)
+- `batcherAccountIndex`: Index of batcher account (0-9, must have balance > 0)
+- `proposerAccountIndex`: Index of proposer account (0-9, must have balance > 0)
 
-#### 2. `get_deployment_status`
+#### 3. `get_deployment_status`
 Get the status of a chain deployment.
 
 **Parameters:**
 - `deploymentId`: Deployment ID to check
 
-#### 3. `list_deployments`
+#### 4. `list_deployments`
 List all chain deployments.
 
-#### 4. `cancel_deployment`
+#### 5. `cancel_deployment`
 Cancel a chain deployment.
 
 **Parameters:**
 - `deploymentId`: Deployment ID to cancel
 
-#### 5. `get_chain_info`
+#### 6. `get_chain_info`
 Get information about a deployed chain.
 
 **Parameters:**
 - `chainId`: Chain ID to get info for
 
-#### 6. `test_backend_connection`
+#### 7. `test_backend_connection`
 Test connection to the backend server.
 
-## Example Chain Deployment Request
+## Network-Specific Defaults
 
+### Mainnet Defaults:
+- **Challenge Period**: 50400 blocks (7 days)
+- **L2 Block Time**: 6 seconds
+- **Output Root Frequency**: 64800 blocks (6 * 10800)
+- **Batch Submission Frequency**: 18000 blocks (12 * 1500)
+
+### Testnet Defaults:
+- **Challenge Period**: 12 blocks
+- **L2 Block Time**: 6 seconds
+- **Output Root Frequency**: 1440 blocks
+- **Batch Submission Frequency**: 1440 blocks
+
+## Example Usage Workflow
+
+### 1. Generate Accounts from Seed Phrase
 ```json
 {
-  "adminAccount": "0x1234567890123456789012345678901234567890",
+  "seedPhrase": "your twelve word seed phrase here",
+  "l1RpcUrl": "https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+}
+```
+
+### 2. Deploy Chain with Selected Accounts
+```json
+{
+  "seedPhrase": "your twelve word seed phrase here",
   "awsAccessKey": "AKIAIOSFODNN7EXAMPLE",
+  "awsSecretKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
   "awsRegion": "us-east-1",
-  "awsSecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-  "batchSubmissionFrequency": 10,
-  "batcherAccount": "0x1234567890123456789012345678901234567890",
-  "chainName": "MyTestChain",
-  "challengePeriod": 7,
-  "deploymentPath": "/path/to/deployment",
+  "l1RpcUrl": "https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY",
   "l1BeaconUrl": "https://beacon.example.com",
-  "l1RpcUrl": "https://rpc.example.com",
-  "l2BlockTime": 2,
-  "network": "Testnet",
-  "outputRootFrequency": 1000,
-  "proposerAccount": "0x1234567890123456789012345678901234567890",
+  "chainName": "MyTestChain",
+  "network": "Mainnet",
   "registerCandidate": true,
   "registerCandidateParams": {
     "amount": 1000000,
     "memo": "Test chain registration",
     "nameInfo": "MyTestChain"
   },
-  "sequencerAccount": "0x1234567890123456789012345678901234567890"
+  "adminAccountIndex": 0,
+  "sequencerAccountIndex": 1,
+  "batcherAccountIndex": 2,
+  "proposerAccountIndex": 3
 }
 ```
 
@@ -141,12 +195,12 @@ Test connection to the backend server.
 
 The MCP server expects the following backend API endpoints:
 
-- `POST /api/chain/deploy` - Deploy a new chain
-- `GET /api/chain/deployment/{id}/status` - Get deployment status
-- `GET /api/chain/deployments` - List all deployments
-- `POST /api/chain/deployment/{id}/cancel` - Cancel deployment
-- `GET /api/chain/{id}` - Get chain information
-- `GET /api/health` - Health check
+- `POST /api/v1/stacks/thanos` - Deploy a new chain
+- `GET /api/v1/stacks/thanos` - List all deployments
+- `GET /api/v1/stacks/thanos/:id` - Get deployment status
+- `DELETE /api/v1/stacks/thanos/:id` - Cancel deployment
+- `GET /api/chain/:id` - Get chain information
+- `GET /api/v1/health` - Health check
 
 ## Development
 
@@ -165,14 +219,21 @@ src/
 ### Building
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 ### Testing
 
 ```bash
-npm test
+pnpm test
 ```
+
+## Dependencies
+
+- **@modelcontextprotocol/sdk**: MCP SDK for server implementation
+- **ethers**: Ethereum library for account generation and balance checking
+- **axios**: HTTP client for backend API calls
+- **zod**: Schema validation
 
 ## License
 
