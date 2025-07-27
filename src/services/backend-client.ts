@@ -112,12 +112,17 @@ export class BackendClient {
   async listDeployments(): Promise<DeploymentResponse[]> {
     try {
       const response: AxiosResponse<{
-        stacks: DeploymentResponse[]
+        data: {
+          stacks: DeploymentResponse[]
+        }
       }> = await this.client.get(
         '/api/v1/stacks/thanos'
       );
 
-      return response.data.stacks;
+      // Log response data safely using console.error to avoid MCP protocol interference
+      console.error('List deployments response:', JSON.stringify(response.data, null, 2));
+
+      return response.data.data.stacks;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to list deployments: ${error.message}`);
@@ -135,10 +140,16 @@ export class BackendClient {
         `/api/v1/stacks/thanos/${deploymentId}`
       );
 
-      return response.data;
+      return {
+        success: true,
+        message: 'Deployment cancelled successfully'
+      };
     } catch (error) {
       if (error instanceof Error) {
-        throw new Error(`Failed to cancel deployment: ${error.message}`);
+        return {
+          success: false,
+          message: `Failed to cancel deployment: ${error.message}`
+        };
       }
       throw error;
     }

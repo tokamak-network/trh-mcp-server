@@ -675,6 +675,7 @@ Proceeding with deployment...`;
     }
     const result = await this.backendClient.cancelDeployment(args.deploymentId);
 
+
     return {
       content: [
         {
