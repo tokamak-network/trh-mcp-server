@@ -73,7 +73,7 @@ class ChainDeploymentMCPServer {
           },
           {
             name: 'deploy_chain',
-            description: 'Deploy a new chain with the specified configuration',
+            description: 'Deploy a new chain with the specified configuration. Strongly recommended: Use default chain configuration (useDefaultChainConfig: true) unless you have specific technical requirements. Default values are optimized for production use. The default configuration will be displayed before deployment starts.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -89,45 +89,49 @@ class ChainDeploymentMCPServer {
                 },
                 l1RpcUrl: { type: 'string', description: 'L1 RPC URL' },
                 l1BeaconUrl: { type: 'string', description: 'L1 beacon URL' },
-                // Individual chain configuration fields
-                l2BlockTime: { type: 'number', description: 'L2 block time in seconds' },
+                // Individual chain configuration fields (Advanced users only - only used when useDefaultChainConfig is false)
+                l2BlockTime: { type: 'number', description: 'Advanced: L2 block time in seconds (only used when useDefaultChainConfig is false - not recommended)' },
                 batchSubmissionFrequency: { 
                   type: 'number', 
-                  description: 'Batch submission frequency (must be divisible by 12)',
+                  description: 'Advanced: Batch submission frequency (must be divisible by 12, only used when useDefaultChainConfig is false - not recommended)',
                   multipleOf: 12
                 },
                 outputRootFrequency: { 
                   type: 'number', 
-                  description: 'Output root frequency (must be divisible by l2BlockTime)'
+                  description: 'Advanced: Output root frequency (must be divisible by l2BlockTime, only used when useDefaultChainConfig is false - not recommended)'
                 },
-                challengePeriod: { type: 'number', description: 'Challenge period in blocks' },
+                challengePeriod: { type: 'number', description: 'Advanced: Challenge period in blocks (only used when useDefaultChainConfig is false - not recommended)' },
                 chainConfiguration: {
                   type: 'object',
                   properties: {
                     challengePeriod: {
                       type: 'number',
-                      description: 'Challenge period in blocks (default: Mainnet=7 days, Testnet=12 blocks)'
+                      description: 'Challenge period in blocks (only used when useDefaultChainConfig is false)'
                     },
                     l2BlockTime: {
                       type: 'number',
-                      description: 'L2 block time in seconds (default: Mainnet=2 seconds, Testnet=6 seconds)'
+                      description: 'L2 block time in seconds (only used when useDefaultChainConfig is false)'
                     },
                     outputRootFrequency: {
                       type: 'number',
-                      description: 'Output root frequency (default: Mainnet=1000 blocks, Testnet=1440 blocks)'
+                      description: 'Output root frequency (only used when useDefaultChainConfig is false)'
                     },
                     batchSubmissionFrequency: {
                       type: 'number',
-                      description: 'Batch submission frequency (default: Mainnet=100 blocks, Testnet=1440 blocks)'
+                      description: 'Batch submission frequency (only used when useDefaultChainConfig is false)'
                     }
                   },
-                  description: 'Chain configuration parameters. Defaults vary by network type.'
+                  description: 'Advanced: Chain configuration parameters object (only used when useDefaultChainConfig is false - not recommended). If not provided, individual fields will be used.'
                 },
                 chainName: { type: 'string', description: 'Name of the chain' },
                 network: {
                   type: 'string',
                   enum: ['Mainnet', 'Testnet', 'mainnet', 'testnet'],
                   description: 'Network type (Mainnet or Testnet)'
+                },
+                useDefaultChainConfig: {
+                  type: 'boolean',
+                  description: 'Strongly recommended: Set to true to use optimized default chain configuration. Only set to false if you have specific technical requirements. Default: true'
                 },
                 registerCandidate: { type: 'boolean', description: 'Whether to enable register candidate' },
                 registerCandidateParams: {
@@ -262,6 +266,21 @@ class ChainDeploymentMCPServer {
               },
               required: ['backendUrl', 'username', 'password']
             }
+          },
+          {
+            name: 'get_default_chain_config',
+            description: 'Get the default chain configuration for Mainnet or Testnet. Strongly recommended: Use these default values for production deployments.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                network: {
+                  type: 'string',
+                  enum: ['Mainnet', 'Testnet', 'mainnet', 'testnet'],
+                  description: 'Network type to get default configuration for'
+                }
+              },
+              required: ['network']
+            }
           }
         ] as Tool[]
       };
@@ -295,6 +314,9 @@ class ChainDeploymentMCPServer {
 
           case 'test_backend_connection':
             return await this.handleTestConnection(args as { backendUrl: string; username: string; password: string });
+
+          case 'get_default_chain_config':
+            return await this.handleGetDefaultChainConfig(args as { network: string });
 
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -339,6 +361,26 @@ class ChainDeploymentMCPServer {
 
   private async handleDeployChain(args: any) {
     console.error('🚀 Starting chain deployment process...');
+    
+    // Show default configuration to user before proceeding
+    const network = args.network || 'testnet';
+    const defaultConfig = network.toLowerCase() === 'mainnet' ? ChainConfiguration.Mainnet : ChainConfiguration.Testnet;
+    
+    const defaultConfigMessage = `📋 Default Chain Configuration for ${network}:
+    
+⚙️  Configuration Parameters:
+• Challenge Period: ${defaultConfig.challengePeriod} ${network.toLowerCase() === 'mainnet' ? 'seconds (7 days)' : 'seconds (12 seconds)'}
+• L2 Block Time: ${defaultConfig.l2BlockTime} seconds
+• Output Root Frequency: ${defaultConfig.outputRootFrequency} seconds (${defaultConfig.outputRootFrequency / defaultConfig.l2BlockTime} blocks)
+• Batch Submission Frequency: ${defaultConfig.batchSubmissionFrequency} seconds (${defaultConfig.batchSubmissionFrequency / 12} L1 blocks)
+
+💡 These are the RECOMMENDED values that will be used if you set useDefaultChainConfig: true
+⚠️  Only use custom values if you have specific technical requirements.
+
+Proceeding with deployment...`;
+    
+    console.error(defaultConfigMessage);
+    
     try {
       // Initialize backend client if credentials provided or use existing one
       if (args.backendUrl && args.username && args.password) {
@@ -445,7 +487,7 @@ class ChainDeploymentMCPServer {
         args.proposerAccount = proposerAccount.privateKey;
       }
 
-      // Apply network-specific default values for chain configuration if not provided
+      // Apply network-specific default values for chain configuration
       const getDefaultChainConfig = (network: 'Mainnet' | 'Testnet') => {
         if (network === 'Mainnet') {
           return ChainConfiguration.Mainnet;
@@ -455,23 +497,36 @@ class ChainDeploymentMCPServer {
         }
       };
 
-      // Check if individual chain configuration fields are provided
-      let chainConfig = args.chainConfiguration;
-      if (!chainConfig) {
-        if (args.l2BlockTime !== undefined || args.batchSubmissionFrequency !== undefined || 
-            args.outputRootFrequency !== undefined || args.challengePeriod !== undefined) {
-          chainConfig = {
-            l2BlockTime: args.l2BlockTime || getDefaultChainConfig(args.network).l2BlockTime,
-            batchSubmissionFrequency: args.batchSubmissionFrequency || getDefaultChainConfig(args.network).batchSubmissionFrequency,
-            outputRootFrequency: args.outputRootFrequency || getDefaultChainConfig(args.network).outputRootFrequency,
-            challengePeriod: args.challengePeriod || getDefaultChainConfig(args.network).challengePeriod
-          };
-        } else {
-          chainConfig = getDefaultChainConfig(args.network);
+      // Handle chain configuration based on operator preference
+      let chainConfig;
+      const useDefaultConfig = args.useDefaultChainConfig !== false; // Default to true if not specified
+      
+            if (useDefaultConfig) {
+        // Use default configuration
+        chainConfig = getDefaultChainConfig(args.network);
+        console.error(`✅ Using recommended default chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+              } else {
+          // Use custom configuration - check if individual fields are provided
+          console.error(`⚠️  Warning: Using custom chain configuration (not recommended for production)`);
+          if (args.l2BlockTime !== undefined || args.batchSubmissionFrequency !== undefined || 
+              args.outputRootFrequency !== undefined || args.challengePeriod !== undefined) {
+            chainConfig = {
+              l2BlockTime: args.l2BlockTime || getDefaultChainConfig(args.network).l2BlockTime,
+              batchSubmissionFrequency: args.batchSubmissionFrequency || getDefaultChainConfig(args.network).batchSubmissionFrequency,
+              outputRootFrequency: args.outputRootFrequency || getDefaultChainConfig(args.network).outputRootFrequency,
+              challengePeriod: args.challengePeriod || getDefaultChainConfig(args.network).challengePeriod
+            };
+            console.error(`⚙️  Using CUSTOM chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+          } else if (args.chainConfiguration) {
+            // Use provided chainConfiguration object
+            chainConfig = args.chainConfiguration;
+            console.error(`⚙️  Using PROVIDED chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+          } else {
+            // Fallback to default if custom config was requested but no values provided
+            chainConfig = getDefaultChainConfig(args.network);
+            console.error(`⚠️  Custom configuration requested but no values provided. Using DEFAULT chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+          }
         }
-      }
-
-      console.error(`⚙️  Using chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
 
               // Transform the new schema structure to match backend expectations
         const backendArgs = {
@@ -522,12 +577,26 @@ class ChainDeploymentMCPServer {
       }
 
 
+      const configType = useDefaultConfig ? 'recommended default' : 'custom (not recommended)';
+      
+      // Include default configuration info in the response
+      const network = args.network || 'testnet';
+      const defaultConfig = network.toLowerCase() === 'mainnet' ? ChainConfiguration.Mainnet : ChainConfiguration.Testnet;
+      
+      const responseText = `Chain deployment ${result.status === 200 ? 'initiated successfully' : 'failed'} using ${configType} configuration. ${result.data?.stackId ? `Stack ID: ${result.data.stackId}` : ''
+        } ${result.message || ''}
+
+📋 Default Configuration for ${network} (for reference):
+• Challenge Period: ${defaultConfig.challengePeriod} ${network.toLowerCase() === 'mainnet' ? 'seconds (7 days)' : 'seconds (12 seconds)'}
+• L2 Block Time: ${defaultConfig.l2BlockTime} seconds
+• Output Root Frequency: ${defaultConfig.outputRootFrequency} seconds (${defaultConfig.outputRootFrequency / defaultConfig.l2BlockTime} blocks)
+• Batch Submission Frequency: ${defaultConfig.batchSubmissionFrequency} seconds (${defaultConfig.batchSubmissionFrequency / 12} L1 blocks)`;
+      
       return {
         content: [
           {
             type: 'text',
-            text: `Chain deployment ${result.status === 200 ? 'initiated successfully' : 'failed'}. ${result.data?.stackId ? `Stack ID: ${result.data.stackId}` : ''
-              } ${result.message || ''}`
+            text: responseText
           }
         ]
       };
@@ -666,6 +735,32 @@ class ChainDeploymentMCPServer {
         {
           type: 'text',
           text: `Backend connection test: ${isConnected ? 'SUCCESS' : 'FAILED'}`
+        }
+      ]
+    };
+  }
+
+  private async handleGetDefaultChainConfig(args: { network: string }) {
+    const network = args.network.toLowerCase() as 'mainnet' | 'testnet';
+    const config = network === 'mainnet' ? ChainConfiguration.Mainnet : ChainConfiguration.Testnet;
+    
+    const configText = `✅ Recommended Default Chain Configuration for ${args.network}:
+    
+📊 Configuration Parameters:
+• Challenge Period: ${config.challengePeriod} ${network === 'mainnet' ? 'seconds (7 days)' : 'seconds (12 seconds)'}
+• L2 Block Time: ${config.l2BlockTime} seconds
+• Output Root Frequency: ${config.outputRootFrequency} seconds (${config.outputRootFrequency / config.l2BlockTime} blocks)
+• Batch Submission Frequency: ${config.batchSubmissionFrequency} seconds (${config.batchSubmissionFrequency / 12} L1 blocks)
+
+🚀 Strongly recommended: Use default configuration (useDefaultChainConfig: true) for production deployments. These values are optimized for security, performance, and reliability.
+
+⚠️  Only use custom values if you have specific technical requirements and understand the implications.`;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: configText
         }
       ]
     };
