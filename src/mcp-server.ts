@@ -290,9 +290,6 @@ class ChainDeploymentMCPServer {
           case 'cancel_deployment':
             return await this.handleCancelDeployment(args as { backendUrl: string; username: string; password: string; deploymentId: string });
 
-          case 'get_chain_info':
-            return await this.handleGetChainInfo(args as { backendUrl: string; username: string; password: string; chainId: string });
-
           case 'get_accounts_from_seed':
             return await this.handleGetAccountsFromSeed(args as { backendUrl: string; username: string; password: string; seedPhrase: string; l1RpcUrl: string });
 
@@ -554,13 +551,24 @@ class ChainDeploymentMCPServer {
     if (!this.backendClient) {
       throw new Error('Failed to initialize backend client');
     }
-    const status = await this.backendClient.getDeploymentStatus(args.deploymentId);
+    const deployment = await this.backendClient.getDeployment(args.deploymentId);
+
+    if (deployment.status === 'Deployed') {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Deployment Status: ${deployment.status}\nL2 URL: ${deployment.metadata.l2_url}\nBridge URL: ${deployment.metadata.bridge_url}`
+          }
+        ]
+      };
+    }
 
     return {
       content: [
         {
           type: 'text',
-          text: `Deployment Status: ${status.status}\nProgress: ${status.progress || 0}%\nMessage: ${status.message || 'No message'}\nChain ID: ${status.chainId || 'Not assigned yet'}`
+          text: `Deployment Status: ${deployment.status}\n`
         }
       ]
     };
@@ -576,7 +584,7 @@ class ChainDeploymentMCPServer {
     const deployments = await this.backendClient.listDeployments();
 
     const deploymentList = deployments.map(d =>
-      `- ${d.deploymentId}: ${d.status} (${d.progress || 0}%) - ${d.chainName || 'Unknown'}`
+      `- ${d.id}: ${d.status} - ${d.config.chainName || 'Unknown'}`
     ).join('\n');
 
     return {
@@ -608,24 +616,6 @@ class ChainDeploymentMCPServer {
     };
   }
 
-  private async handleGetChainInfo(args: { backendUrl: string; username: string; password: string; chainId: string }) {
-    // Initialize backend client with provided credentials
-    await this.initializeBackendClient(args.backendUrl, args.username, args.password);
-
-    if (!this.backendClient) {
-      throw new Error('Failed to initialize backend client');
-    }
-    const chainInfo = await this.backendClient.getChainInfo(args.chainId);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Chain Info for ${args.chainId}:\n${JSON.stringify(chainInfo, null, 2)}`
-        }
-      ]
-    };
-  }
 
   private async handleGetAccountsFromSeed(args: { backendUrl: string; username: string; password: string; seedPhrase: string; l1RpcUrl: string }) {
     try {

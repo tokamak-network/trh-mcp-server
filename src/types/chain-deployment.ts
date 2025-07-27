@@ -175,15 +175,40 @@ export interface ChainDeploymentResponse {
   };
 }
 
-export interface ChainDeploymentStatus {
-  deploymentId: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  progress?: number;
-  message?: string;
-  chainId?: string;
-  chainName?: string;
-  createdAt: string;
-  updatedAt: string;
+export interface DeploymentResponse {
+  id: string;
+  name: string;
+  network: string;
+  config: {
+    network: string;
+    l1RpcUrl: string;
+    awsRegion: string;
+    chainName: string;
+    l1BeaconUrl: string;
+    l2BlockTime: number;
+    adminAccount: string;
+    awsAccessKey: string;
+    batcherAccount: string;
+    deploymentPath: string;
+    challengePeriod: number;
+    proposerAccount: string;
+    sequencerAccount: string;
+    registerCandidate: boolean;
+    awsSecretAccessKey: string;
+    outputRootFrequency: number;
+    registerCandidateParams?: {
+      memo: string;
+      amount: number;
+      nameInfo: string;
+    };
+    batchSubmissionFrequency: number;
+  };
+  deployment_path: string;
+  metadata: {
+    l2_url?: string;
+    bridge_url?: string;
+  };
+  status: string;
 }
 
 export interface AccountInfo {

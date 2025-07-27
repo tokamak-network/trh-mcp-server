@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import {
   ChainDeploymentResponse,
-  ChainDeploymentStatus,
+  DeploymentResponse,
   BackendDeploymentRequestSchema,
   AccountInfo
 } from '../types/chain-deployment.js';
@@ -91,9 +91,9 @@ export class BackendClient {
   /**
    * Get deployment status
    */
-  async getDeploymentStatus(deploymentId: string): Promise<ChainDeploymentStatus> {
+  async getDeployment(deploymentId: string): Promise<DeploymentResponse> {
     try {
-      const response: AxiosResponse<ChainDeploymentStatus> = await this.client.get(
+      const response: AxiosResponse<DeploymentResponse> = await this.client.get(
         `/api/v1/stacks/thanos/${deploymentId}`
       );
 
@@ -109,13 +109,15 @@ export class BackendClient {
   /**
    * List all deployments
    */
-  async listDeployments(): Promise<ChainDeploymentStatus[]> {
+  async listDeployments(): Promise<DeploymentResponse[]> {
     try {
-      const response: AxiosResponse<ChainDeploymentStatus[]> = await this.client.get(
+      const response: AxiosResponse<{
+        stacks: DeploymentResponse[]
+      }> = await this.client.get(
         '/api/v1/stacks/thanos'
       );
 
-      return response.data;
+      return response.data.stacks;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to list deployments: ${error.message}`);
@@ -137,24 +139,6 @@ export class BackendClient {
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to cancel deployment: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Get chain information
-   */
-  async getChainInfo(chainId: string): Promise<any> {
-    try {
-      const response: AxiosResponse<any> = await this.client.get(
-        `/api/chain/${chainId}`
-      );
-
-      return response.data;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to get chain info: ${error.message}`);
       }
       throw error;
     }
