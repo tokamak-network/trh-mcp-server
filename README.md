@@ -128,11 +128,11 @@ Get the status of a chain deployment.
 #### 4. `list_deployments`
 List all chain deployments.
 
-#### 5. `cancel_deployment`
-Cancel a chain deployment.
+#### 5. `terminate_deployment`
+Terminate a chain deployment.
 
 **Parameters:**
-- `deploymentId`: Deployment ID to cancel
+- `deploymentId`: Deployment ID to terminate
 
 #### 6. `get_chain_info`
 Get information about a deployed chain.
@@ -198,7 +198,7 @@ The MCP server expects the following backend API endpoints:
 - `POST /api/v1/stacks/thanos` - Deploy a new chain
 - `GET /api/v1/stacks/thanos` - List all deployments
 - `GET /api/v1/stacks/thanos/:id` - Get deployment status
-- `DELETE /api/v1/stacks/thanos/:id` - Cancel deployment
+- `DELETE /api/v1/stacks/thanos/:id` - Terminate deployment
 - `GET /api/chain/:id` - Get chain information
 - `GET /api/v1/health` - Health check
 

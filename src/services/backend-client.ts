@@ -93,11 +93,15 @@ export class BackendClient {
    */
   async getDeployment(deploymentId: string): Promise<DeploymentResponse> {
     try {
-      const response: AxiosResponse<DeploymentResponse> = await this.client.get(
+      const response: AxiosResponse<{
+        data: {
+          stack: DeploymentResponse
+        }
+      }> = await this.client.get(
         `/api/v1/stacks/thanos/${deploymentId}`
       );
 
-      return response.data;
+      return response.data.data.stack;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to get deployment status: ${error.message}`);
@@ -132,9 +136,9 @@ export class BackendClient {
   }
 
   /**
-   * Cancel a deployment
+   * Terminate a deployment
    */
-  async cancelDeployment(deploymentId: string): Promise<{ success: boolean; message: string }> {
+  async terminateDeployment(deploymentId: string): Promise<{ success: boolean; message: string }> {
     try {
       const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.delete(
         `/api/v1/stacks/thanos/${deploymentId}`

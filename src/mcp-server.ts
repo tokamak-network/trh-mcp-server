@@ -212,8 +212,8 @@ class ChainDeploymentMCPServer {
             }
           },
           {
-            name: 'cancel_deployment',
-            description: 'Cancel a chain deployment',
+            name: 'terminate_deployment',
+            description: 'Terminate a chain deployment',
             inputSchema: {
               type: 'object',
               properties: {
@@ -223,20 +223,6 @@ class ChainDeploymentMCPServer {
                 deploymentId: { type: 'string', description: 'Deployment ID to cancel' }
               },
               required: ['backendUrl', 'username', 'password', 'deploymentId']
-            }
-          },
-          {
-            name: 'get_chain_info',
-            description: 'Get information about a deployed chain',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                backendUrl: { type: 'string', description: 'Backend server URL' },
-                username: { type: 'string', description: 'Backend username' },
-                password: { type: 'string', description: 'Backend password' },
-                chainId: { type: 'string', description: 'Chain ID to get info for' }
-              },
-              required: ['backendUrl', 'username', 'password', 'chainId']
             }
           },
           {
@@ -306,8 +292,8 @@ class ChainDeploymentMCPServer {
           case 'list_deployments':
             return await this.handleListDeployments(args as { backendUrl: string; username: string; password: string });
 
-          case 'cancel_deployment':
-            return await this.handleCancelDeployment(args as { backendUrl: string; username: string; password: string; deploymentId: string });
+          case 'terminate_deployment':
+            return await this.handleTerminateDeployment(args as { backendUrl: string; username: string; password: string; deploymentId: string });
 
           case 'get_accounts_from_seed':
             return await this.handleGetAccountsFromSeed(args as { backendUrl: string; username: string; password: string; seedPhrase: string; l1RpcUrl: string });
@@ -666,21 +652,21 @@ Proceeding with deployment...`;
     };
   }
 
-  private async handleCancelDeployment(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+  private async handleTerminateDeployment(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
     // Initialize backend client with provided credentials
     await this.initializeBackendClient(args.backendUrl, args.username, args.password);
 
     if (!this.backendClient) {
       throw new Error('Failed to initialize backend client');
     }
-    const result = await this.backendClient.cancelDeployment(args.deploymentId);
+    const result = await this.backendClient.terminateDeployment(args.deploymentId);
 
 
     return {
       content: [
         {
           type: 'text',
-          text: `Deployment cancellation ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          text: `Deployment termination ${result.success ? 'successful' : 'failed'}: ${result.message}`
         }
       ]
     };
