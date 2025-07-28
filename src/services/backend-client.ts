@@ -160,6 +160,225 @@ export class BackendClient {
   }
 
   /**
+   * Stop a deployment
+   */
+  async stopDeployment(deploymentId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.post(
+        `/api/v1/stacks/thanos/${deploymentId}/stop`
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to stop deployment: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to stop deployment: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Resume a deployment
+   */
+  async resumeDeployment(deploymentId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.post(
+        `/api/v1/stacks/thanos/${deploymentId}/resume`
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to resume deployment: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to resume deployment: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Install bridge for a deployment
+   */
+  async installBridge(deploymentId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.post(
+        `/api/v1/stacks/thanos/${deploymentId}/integrations/bridge`
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to install bridge: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to install bridge: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Install block explorer for a deployment
+   */
+  async installBlockExplorer(deploymentId: string, payload: {
+    databaseUsername: string;
+    databasePassword: string;
+    coinmarketcapKey: string;
+    walletConnectId: string;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.post(
+        `/api/v1/stacks/thanos/${deploymentId}/integrations/block-explorer`,
+        payload
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to install block explorer: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to install block explorer: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Install monitoring tools for a deployment
+   */
+  async installMonitoring(deploymentId: string, payload: {
+    grafanaPassword: string;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.post(
+        `/api/v1/stacks/thanos/${deploymentId}/integrations/monitoring`,
+        payload
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to install monitoring tools: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to install monitoring tools: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Uninstall bridge for a deployment
+   */
+  async uninstallBridge(deploymentId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.delete(
+        `/api/v1/stacks/thanos/${deploymentId}/integrations/bridge`
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to uninstall bridge: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to uninstall bridge: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Uninstall block explorer for a deployment
+   */
+  async uninstallBlockExplorer(deploymentId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.delete(
+        `/api/v1/stacks/thanos/${deploymentId}/integrations/block-explorer`
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to uninstall block explorer: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to uninstall block explorer: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Uninstall monitoring tools for a deployment
+   */
+  async uninstallMonitoring(deploymentId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response: AxiosResponse<{ success: boolean; message: string }> = await this.client.delete(
+        `/api/v1/stacks/thanos/${deploymentId}/integrations/monitoring`
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          success: false,
+          message: `Failed to uninstall monitoring tools: ${error.message}`
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to uninstall monitoring tools: Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Get all integrations for a deployment
+   */
+  async getIntegrations(deploymentId: string): Promise<any> {
+    try {
+      const response: AxiosResponse<any> = await this.client.get(
+        `/api/v1/stacks/thanos/${deploymentId}/integrations`
+      );
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to get integrations: ${error.message}`);
+      }
+      throw new Error('Failed to get integrations: Unknown error');
+    }
+  }
+
+  /**
    * Test connection to backend
    */
   async testConnection(): Promise<boolean> {

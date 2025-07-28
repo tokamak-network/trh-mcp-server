@@ -134,7 +134,13 @@ Terminate a chain deployment.
 **Parameters:**
 - `deploymentId`: Deployment ID to terminate
 
-#### 6. `get_chain_info`
+#### 6. `install_bridge`
+Install bridge for a chain deployment.
+
+**Parameters:**
+- `deploymentId`: Deployment ID to install bridge for
+
+#### 7. `get_chain_info`
 Get information about a deployed chain.
 
 **Parameters:**
@@ -199,6 +205,7 @@ The MCP server expects the following backend API endpoints:
 - `GET /api/v1/stacks/thanos` - List all deployments
 - `GET /api/v1/stacks/thanos/:id` - Get deployment status
 - `DELETE /api/v1/stacks/thanos/:id` - Terminate deployment
+- `POST /api/v1/stacks/thanos/:id/integrations/bridge` - Install bridge
 - `GET /api/chain/:id` - Get chain information
 - `GET /api/v1/health` - Health check
 

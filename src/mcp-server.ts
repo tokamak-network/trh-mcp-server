@@ -9,7 +9,7 @@ import { BackendClient } from './services/backend-client.js';
 import { ChainDeploymentRequest } from './types/chain-deployment.js';
 import { generateAccountsFromSeedPhrase } from './lib/utils/wallet.js';
 import { Account } from './lib/models/index.js';
-import { getSupportedAwsRegions, validateAwsCredentials } from './lib/utils/aws.js';
+import { getSupportedAwsRegions, validateAwsCredentials, validateRdsPostgresCredentials, validateGrafanaPassword } from './lib/utils/aws.js';
 import { verifyL1BeaconUrl, verifyL1RpcUrl } from './lib/utils/rpc.js';
 
 const ChainConfiguration = {
@@ -220,7 +220,127 @@ class ChainDeploymentMCPServer {
                 backendUrl: { type: 'string', description: 'Backend server URL' },
                 username: { type: 'string', description: 'Backend username' },
                 password: { type: 'string', description: 'Backend password' },
-                deploymentId: { type: 'string', description: 'Deployment ID to cancel' }
+                deploymentId: { type: 'string', description: 'Deployment ID to terminate' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
+            }
+          },
+          {
+            name: 'stop_deployment',
+            description: 'Stop a chain deployment (can be resumed later)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to stop' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
+            }
+          },
+          {
+            name: 'resume_deployment',
+            description: 'Resume a stopped chain deployment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to resume' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
+            }
+          },
+          {
+            name: 'install_bridge',
+            description: 'Install bridge for a chain deployment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to install bridge for' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
+            }
+          },
+          {
+            name: 'install_block_explorer',
+            description: 'Install block explorer for a chain deployment with database and API integrations',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to install block explorer for' },
+                awsAccessKey: { type: 'string', description: 'AWS access key for RDS validation' },
+                awsSecretKey: { type: 'string', description: 'AWS secret access key for RDS validation' },
+                awsRegion: { type: 'string', description: 'AWS region for RDS validation' },
+                databaseUsername: { type: 'string', description: 'AWS RDS PostgreSQL database username' },
+                databasePassword: { type: 'string', description: 'AWS RDS PostgreSQL database password' },
+                coinmarketcapKey: { type: 'string', description: 'CoinMarketCap API key' },
+                walletConnectId: { type: 'string', description: 'WalletConnect project ID' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId', 'awsAccessKey', 'awsSecretKey', 'awsRegion', 'databaseUsername', 'databasePassword', 'coinmarketcapKey', 'walletConnectId']
+            }
+          },
+          {
+            name: 'install_monitoring',
+            description: 'Install monitoring tools (Grafana) for a chain deployment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to install monitoring for' },
+                grafanaPassword: { type: 'string', description: 'Grafana admin password (must be at least 6 characters with letters and numbers)' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId', 'grafanaPassword']
+            }
+          },
+          {
+            name: 'uninstall_bridge',
+            description: 'Uninstall bridge for a chain deployment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to uninstall bridge for' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
+            }
+          },
+          {
+            name: 'uninstall_block_explorer',
+            description: 'Uninstall block explorer for a chain deployment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to uninstall block explorer for' }
+              },
+              required: ['backendUrl', 'username', 'password', 'deploymentId']
+            }
+          },
+          {
+            name: 'uninstall_monitoring',
+            description: 'Uninstall monitoring tools (Grafana) for a chain deployment',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                backendUrl: { type: 'string', description: 'Backend server URL' },
+                username: { type: 'string', description: 'Backend username' },
+                password: { type: 'string', description: 'Backend password' },
+                deploymentId: { type: 'string', description: 'Deployment ID to uninstall monitoring for' }
               },
               required: ['backendUrl', 'username', 'password', 'deploymentId']
             }
@@ -294,6 +414,48 @@ class ChainDeploymentMCPServer {
 
           case 'terminate_deployment':
             return await this.handleTerminateDeployment(args as { backendUrl: string; username: string; password: string; deploymentId: string });
+
+          case 'stop_deployment':
+            return await this.handleStopDeployment(args as { backendUrl: string; username: string; password: string; deploymentId: string });
+
+          case 'resume_deployment':
+            return await this.handleResumeDeployment(args as { backendUrl: string; username: string; password: string; deploymentId: string });
+
+          case 'install_bridge':
+            return await this.handleInstallBridge(args as { backendUrl: string; username: string; password: string; deploymentId: string });
+
+          case 'install_block_explorer':
+            return await this.handleInstallBlockExplorer(args as { 
+              backendUrl: string; 
+              username: string; 
+              password: string; 
+              deploymentId: string;
+              awsAccessKey: string;
+              awsSecretKey: string;
+              awsRegion: string;
+              databaseUsername: string;
+              databasePassword: string;
+              coinmarketcapKey: string;
+              walletConnectId: string;
+            });
+
+          case 'install_monitoring':
+            return await this.handleInstallMonitoring(args as { 
+              backendUrl: string; 
+              username: string; 
+              password: string; 
+              deploymentId: string;
+              grafanaPassword: string;
+            });
+
+          case 'uninstall_bridge':
+            return await this.handleUninstallBridge(args as { backendUrl: string; username: string; password: string; deploymentId: string });
+
+          case 'uninstall_block_explorer':
+            return await this.handleUninstallBlockExplorer(args as { backendUrl: string; username: string; password: string; deploymentId: string });
+
+          case 'uninstall_monitoring':
+            return await this.handleUninstallMonitoring(args as { backendUrl: string; username: string; password: string; deploymentId: string });
 
           case 'get_accounts_from_seed':
             return await this.handleGetAccountsFromSeed(args as { backendUrl: string; username: string; password: string; seedPhrase: string; l1RpcUrl: string });
@@ -670,6 +832,301 @@ Proceeding with deployment...`;
         }
       ]
     };
+  }
+
+  private async handleStopDeployment(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    try {
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      console.error('⏸️  Stopping deployment...');
+      const result = await this.backendClient.stopDeployment(args.deploymentId);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Deployment stop ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Deployment stop failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleResumeDeployment(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    try {
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      console.error('▶️  Resuming deployment...');
+      const result = await this.backendClient.resumeDeployment(args.deploymentId);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Deployment resume ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Deployment resume failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleInstallBridge(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    // Initialize backend client with provided credentials
+    await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+    if (!this.backendClient) {
+      throw new Error('Failed to initialize backend client');
+    }
+    const result = await this.backendClient.installBridge(args.deploymentId);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Bridge installation ${result.success ? 'successful' : 'failed'}: ${result.message}`
+        }
+      ]
+    };
+  }
+
+  private async handleInstallBlockExplorer(args: { 
+    backendUrl: string; 
+    username: string; 
+    password: string; 
+    deploymentId: string;
+    databaseUsername: string;
+    databasePassword: string;
+    coinmarketcapKey: string;
+    walletConnectId: string;
+  }) {
+    try {
+      console.error('🔍 Validating AWS RDS PostgreSQL credentials...');
+      
+      // Validate AWS RDS PostgreSQL credentials
+      const rdsValidation = await validateRdsPostgresCredentials(
+        args.databaseUsername,
+        args.databasePassword
+      );
+
+      if (!rdsValidation.isValid) {
+        throw new Error(`AWS RDS PostgreSQL validation failed: ${rdsValidation.error}`);
+      }
+
+      console.error('✅ AWS RDS PostgreSQL credentials validated successfully');
+
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      // Prepare the payload for block explorer installation
+      const payload = {
+        databaseUsername: args.databaseUsername,
+        databasePassword: args.databasePassword,
+        coinmarketcapKey: args.coinmarketcapKey,
+        walletConnectId: args.walletConnectId
+      };
+
+      console.error('🚀 Installing block explorer...');
+      const result = await this.backendClient.installBlockExplorer(args.deploymentId, payload);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Block explorer installation ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Block explorer installation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleInstallMonitoring(args: { 
+    backendUrl: string; 
+    username: string; 
+    password: string; 
+    deploymentId: string;
+    grafanaPassword: string;
+  }) {
+    try {
+      console.error('🔍 Validating Grafana password...');
+      
+      // Validate Grafana password
+      const passwordValidation = validateGrafanaPassword(args.grafanaPassword);
+      if (!passwordValidation.isValid) {
+        throw new Error(`Grafana password validation failed: ${passwordValidation.error}`);
+      }
+
+      console.error('✅ Grafana password validated successfully');
+
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      // Prepare the payload for monitoring installation
+      const payload = {
+        grafanaPassword: args.grafanaPassword
+      };
+
+      console.error('🚀 Installing monitoring tools...');
+      const result = await this.backendClient.installMonitoring(args.deploymentId, payload);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Monitoring tools installation ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Monitoring tools installation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleUninstallBridge(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    try {
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      console.error('🚀 Uninstalling bridge...');
+      const result = await this.backendClient.uninstallBridge(args.deploymentId);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Bridge uninstallation ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Bridge uninstallation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleUninstallBlockExplorer(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    try {
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      console.error('🚀 Uninstalling block explorer...');
+      const result = await this.backendClient.uninstallBlockExplorer(args.deploymentId);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Block explorer uninstallation ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Block explorer uninstallation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleUninstallMonitoring(args: { backendUrl: string; username: string; password: string; deploymentId: string }) {
+    try {
+      // Initialize backend client with provided credentials
+      await this.initializeBackendClient(args.backendUrl, args.username, args.password);
+
+      if (!this.backendClient) {
+        throw new Error('Failed to initialize backend client');
+      }
+
+      console.error('🚀 Uninstalling monitoring tools...');
+      const result = await this.backendClient.uninstallMonitoring(args.deploymentId);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Monitoring tools uninstallation ${result.success ? 'successful' : 'failed'}: ${result.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Monitoring tools uninstallation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
   }
 
 

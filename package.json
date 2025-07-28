@@ -21,6 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.854.0",
+    "@aws-sdk/client-rds": "^3.848.0",
     "@aws-sdk/client-sts": "^3.848.0",
     "@modelcontextprotocol/sdk": "^0.4.0",
     "axios": "^1.6.0",
