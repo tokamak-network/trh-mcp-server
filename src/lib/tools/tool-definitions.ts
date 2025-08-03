@@ -3,7 +3,7 @@ import { Tool } from '@modelcontextprotocol/sdk/types.js';
 export const TOOLS: Tool[] = [
   {
     name: 'initialize_backend',
-    description: 'Initialize backend client with credentials (call this first)',
+    description: 'Initialize backend client with credentials (call this first, or provide credentials directly in other tools)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -16,34 +16,44 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'deploy_chain',
-    description: 'Deploy a new chain with the specified configuration. Strongly recommended: Use default chain configuration (useDefaultChainConfig: true) unless you have specific technical requirements. Default values are optimized for production use. The default configuration will be displayed before deployment starts.',
+    description: 'Deploy a new chain with the specified configuration. IMPORTANT: You must ask the user for the network type (testnet/mainnet) and chain configuration preference before calling this tool. REQUIRED PARAMETERS: network, awsAccessKey, awsSecretKey, awsRegion, l1RpcUrl, l1BeaconUrl, chainName, registerCandidate, useDefaultChainConfig. CHAIN CONFIGURATION: You MUST set useDefaultChainConfig to true (recommended) or false (with custom values). The tool will show the default configuration and ask for confirmation. For testnet: Use default chain configuration (useDefaultChainConfig: true) is recommended. For mainnet: Carefully review default values and consider custom configuration based on your specific requirements. ACCOUNT FIELDS: You must provide EITHER Option A (seedPhrase + adminAccountIndex, sequencerAccountIndex, batcherAccountIndex, proposerAccountIndex) OR Option B (adminAccount, sequencerAccount, batcherAccount, proposerAccount private keys directly).',
     inputSchema: {
       type: 'object',
       properties: {
-        backendUrl: { type: 'string', description: 'Backend server URL (optional if already initialized)' },
-        username: { type: 'string', description: 'Backend username (optional if already initialized)' },
-        password: { type: 'string', description: 'Backend password (optional if already initialized)' },
+        backendUrl: { type: 'string', description: 'REQUIRED: Backend server URL (optional if already initialized)' },
+        username: { type: 'string', description: 'REQUIRED: Backend username (optional if already initialized)' },
+        password: { type: 'string', description: 'REQUIRED: Backend password (optional if already initialized)' },
         seedPhrase: { type: 'string', description: 'Seed phrase for account generation (optional if using private keys)' },
-        awsAccessKey: { type: 'string', description: 'AWS access key' },
-        awsSecretKey: { type: 'string', description: 'AWS secret access key' },
+        awsAccessKey: { type: 'string', description: 'REQUIRED: AWS access key' },
+        awsSecretKey: { type: 'string', description: 'REQUIRED: AWS secret access key' },
         awsRegion: {
           type: 'string',
-          description: 'AWS region (restricted list)'
+          description: 'REQUIRED: AWS region (restricted list)'
         },
-        l1RpcUrl: { type: 'string', description: 'L1 RPC URL' },
-        l1BeaconUrl: { type: 'string', description: 'L1 beacon URL' },
+        l1RpcUrl: { type: 'string', description: 'REQUIRED: L1 RPC URL' },
+        l1BeaconUrl: { type: 'string', description: 'REQUIRED: L1 beacon URL' },
         // Individual chain configuration fields (Advanced users only - only used when useDefaultChainConfig is false)
-        l2BlockTime: { type: 'number', description: 'Advanced: L2 block time in seconds (only used when useDefaultChainConfig is false - not recommended)' },
+        l2BlockTime: { 
+          type: 'number', 
+          description: 'Advanced: L2 block time in seconds (only used when useDefaultChainConfig is false - not recommended for production)',
+          minimum: 1
+        },
         batchSubmissionFrequency: { 
           type: 'number', 
-          description: 'Advanced: Batch submission frequency (must be divisible by 12, only used when useDefaultChainConfig is false - not recommended)',
-          multipleOf: 12
+          description: 'Advanced: Batch submission frequency in seconds (must be divisible by 12, only used when useDefaultChainConfig is false - not recommended for production)',
+          multipleOf: 12,
+          minimum: 12
         },
         outputRootFrequency: { 
           type: 'number', 
-          description: 'Advanced: Output root frequency (must be divisible by l2BlockTime, only used when useDefaultChainConfig is false - not recommended)'
+          description: 'Advanced: Output root frequency in seconds (must be divisible by l2BlockTime value, only used when useDefaultChainConfig is false - not recommended for production)',
+          minimum: 1
         },
-        challengePeriod: { type: 'number', description: 'Advanced: Challenge period in blocks (only used when useDefaultChainConfig is false - not recommended)' },
+        challengePeriod: { 
+          type: 'number', 
+          description: 'Advanced: Challenge period in seconds (only used when useDefaultChainConfig is false - not recommended for production)',
+          minimum: 1
+        },
         chainConfiguration: {
           type: 'object',
           properties: {
@@ -64,28 +74,29 @@ export const TOOLS: Tool[] = [
               description: 'Batch submission frequency (only used when useDefaultChainConfig is false)'
             }
           },
-          description: 'Advanced: Chain configuration parameters object (only used when useDefaultChainConfig is false - not recommended). If not provided, individual fields will be used.'
+          description: 'Advanced: Chain configuration parameters object (only used when useDefaultChainConfig is false - not recommended for production). If not provided, individual fields will be used.'
         },
-        chainName: { type: 'string', description: 'Name of the chain' },
+        chainName: { type: 'string', description: 'REQUIRED: Name of the chain' },
         network: {
           type: 'string',
           enum: ['Mainnet', 'Testnet', 'mainnet', 'testnet'],
-          description: 'Network type (Mainnet or Testnet)'
+          description: 'REQUIRED: Network type to deploy to. Choose "testnet" for testing (no real funds) or "mainnet" for production (real funds will be used)'
         },
         useDefaultChainConfig: {
           type: 'boolean',
-          description: 'Strongly recommended: Set to true to use optimized default chain configuration. Only set to false if you have specific technical requirements. Default: true'
+          description: 'REQUIRED: Set to true to use default chain configuration (recommended for most users), or false to provide custom configuration. For testnet: RECOMMENDED to set to true. For mainnet: Review default values carefully and consider custom configuration based on your specific requirements.',
         },
-        registerCandidate: { type: 'boolean', description: 'Whether to enable register candidate' },
+        registerCandidate: { type: 'boolean', description: 'REQUIRED: Whether to enable register candidate' },
         registerCandidateParams: {
           type: 'object',
+          description: 'REQUIRED if registerCandidate is true, registration parameters',
           properties: {
             amount: { 
               type: 'number', 
-              description: 'Registration amount (must be > 1000 when registerCandidate is true)',
+              description: 'Registration amount (must be > 1000)',
               minimum: 1000.01
             },
-            memo: { type: 'string', description: 'Registration memo' },
+            memo: { type: 'string', description: 'REQUIRED if registerCandidate is true: Registration memo' },
             nameInfo: { type: 'string', description: 'Registration name info' }
           },
           required: ['amount', 'memo', 'nameInfo']
@@ -93,37 +104,38 @@ export const TOOLS: Tool[] = [
         // Account fields - provide either indices (with seedPhrase) or private keys directly
         adminAccountIndex: {
           type: 'number',
-          description: 'Index of admin account from generated accounts (0-9, requires seedPhrase)',
+          description: 'REQUIRED if using Option A: Index of admin account from generated accounts (0-9, requires seedPhrase)',
           minimum: 0,
           maximum: 9
         },
         sequencerAccountIndex: {
           type: 'number',
-          description: 'Index of sequencer account from generated accounts (0-9, requires seedPhrase)',
+          description: 'REQUIRED if using Option A: Index of sequencer account from generated accounts (0-9, requires seedPhrase)',
           minimum: 0,
           maximum: 9
         },
         batcherAccountIndex: {
           type: 'number',
-          description: 'Index of batcher account from generated accounts (0-9, requires seedPhrase)',
+          description: 'REQUIRED if using Option A: Index of batcher account from generated accounts (0-9, requires seedPhrase)',
           minimum: 0,
           maximum: 9
         },
         proposerAccountIndex: {
           type: 'number',
-          description: 'Index of proposer account from generated accounts (0-9, requires seedPhrase)',
+          description: 'REQUIRED if using Option A: Index of proposer account from generated accounts (0-9, requires seedPhrase)',
           minimum: 0,
           maximum: 9
         },
         // Private key fields (alternative to indices)
-        adminAccount: { type: 'string', description: 'Admin account private key (64 hex characters, alternative to adminAccountIndex)' },
-        sequencerAccount: { type: 'string', description: 'Sequencer account private key (64 hex characters, alternative to sequencerAccountIndex)' },
-        batcherAccount: { type: 'string', description: 'Batcher account private key (64 hex characters, alternative to batcherAccountIndex)' },
-        proposerAccount: { type: 'string', description: 'Proposer account private key (64 hex characters, alternative to proposerAccountIndex)' }
+        adminAccount: { type: 'string', description: 'REQUIRED if using Option B: Admin account private key (64 hex characters)' },
+        sequencerAccount: { type: 'string', description: 'REQUIRED if using Option B: Sequencer account private key (64 hex characters)' },
+        batcherAccount: { type: 'string', description: 'REQUIRED if using Option B: Batcher account private key (64 hex characters)' },
+        proposerAccount: { type: 'string', description: 'REQUIRED if using Option B: Proposer account private key (64 hex characters)' }
       },
       required: [
         'awsAccessKey', 'awsSecretKey', 'awsRegion',
-        'l1RpcUrl', 'l1BeaconUrl', 'chainName', 'network', 'registerCandidate'
+        'l1RpcUrl', 'l1BeaconUrl', 'chainName', 'network', 'registerCandidate',
+        'useDefaultChainConfig'
       ]
     }
   },
@@ -294,13 +306,10 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        backendUrl: { type: 'string', description: 'Backend server URL' },
-        username: { type: 'string', description: 'Backend username' },
-        password: { type: 'string', description: 'Backend password' },
         seedPhrase: { type: 'string', description: 'Seed phrase to generate accounts from' },
         l1RpcUrl: { type: 'string', description: 'L1 RPC URL to check balances' }
       },
-      required: ['backendUrl', 'username', 'password', 'seedPhrase', 'l1RpcUrl']
+      required: ['seedPhrase', 'l1RpcUrl']
     }
   },
   {
@@ -318,7 +327,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_default_chain_config',
-    description: 'Get the default chain configuration for Mainnet or Testnet. Strongly recommended: Use these default values for production deployments.',
+    description: 'Get the default chain configuration for Mainnet or Testnet. For testnet: These default values are recommended. For mainnet: Review carefully and consider custom configuration based on your specific requirements.',
     inputSchema: {
       type: 'object',
       properties: {

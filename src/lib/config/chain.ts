@@ -26,12 +26,11 @@ export const getDefaultConfigMessage = (network: NetworkType) => {
   
   return `📋 Default Chain Configuration for ${network}:
     
-⚙️  Configuration Parameters:
-• Challenge Period: ${config.challengePeriod} ${isMainnet ? 'seconds (7 days)' : 'seconds (12 seconds)'}
-• L2 Block Time: ${config.l2BlockTime} seconds
-• Output Root Frequency: ${config.outputRootFrequency} seconds (${config.outputRootFrequency / config.l2BlockTime} blocks)
-• Batch Submission Frequency: ${config.batchSubmissionFrequency} seconds (${config.batchSubmissionFrequency / 12} L1 blocks)
+  ⚙️  Configuration Parameters:
+  • Challenge Period: ${config.challengePeriod} ${isMainnet ? 'seconds (7 days)' : 'seconds (12 seconds)'}
+  • L2 Block Time: ${config.l2BlockTime} seconds
+  • Output Root Frequency: ${config.outputRootFrequency} seconds (${config.outputRootFrequency / config.l2BlockTime} blocks)
+  • Batch Submission Frequency: ${config.batchSubmissionFrequency} seconds (${config.batchSubmissionFrequency / 12} L1 blocks)
 
-💡 These are the RECOMMENDED values that will be used if you set useDefaultChainConfig: true
-⚠️  Only use custom values if you have specific technical requirements.`;
+  ${isMainnet ? '⚠️  For mainnet deployments, carefully review these values and consider custom configuration based on your specific requirements.' : ''}`;
 }; 

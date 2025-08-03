@@ -10,8 +10,52 @@ export class DeploymentHandlers {
   async handleDeployChain(args: any) {
     console.error('🚀 Starting chain deployment process...');
     
+    // Validate required parameters
+    const requiredParams = ['awsAccessKey', 'awsSecretKey', 'awsRegion', 'l1RpcUrl', 'l1BeaconUrl', 'chainName', 'network', 'registerCandidate', 'useDefaultChainConfig'];
+    const missingParams = requiredParams.filter(param => args[param] === undefined);
+    
+    if (missingParams.length > 0) {
+      console.error('❌ MISSING REQUIRED PARAMETERS:');
+      console.error('The following parameters are required but not provided:');
+      missingParams.forEach(param => console.error(`• ${param}`));
+      console.error('');
+      console.error('💡 Please provide all required parameters before proceeding with deployment.');
+      throw new Error(`Missing required parameters: ${missingParams.join(', ')}`);
+    }
+    
+    // Validate registerCandidateParams when registerCandidate is true
+    if (args.registerCandidate === true && !args.registerCandidateParams) {
+      console.error('❌ MISSING REGISTRATION PARAMETERS:');
+      console.error('When registerCandidate is true, you must provide registerCandidateParams with:');
+      console.error('• amount (must be > 1000)');
+      console.error('• memo');
+      console.error('• nameInfo');
+      throw new Error('Missing required parameters: registerCandidateParams');
+    }
+    
+    if (args.registerCandidate === true && args.registerCandidateParams) {
+      const requiredRegParams = ['amount', 'memo', 'nameInfo'];
+      const missingRegParams = requiredRegParams.filter(param => args.registerCandidateParams[param] === undefined);
+      
+      if (missingRegParams.length > 0) {
+        console.error('❌ MISSING REGISTRATION PARAMETERS:');
+        console.error('The following registration parameters are required but not provided:');
+        missingRegParams.forEach(param => console.error(`• ${param}`));
+        throw new Error(`Missing required registration parameters: ${missingRegParams.join(', ')}`);
+      }
+      
+      if (args.registerCandidateParams.amount <= 1000) {
+        throw new Error('Registration amount must be greater than 1000');
+      }
+    }
+    
+    // Normalize network to lowercase and validate
+    let network = args.network.toLowerCase();
+    if (network !== 'testnet' && network !== 'mainnet') {
+      throw new Error('Invalid network. Must be "testnet" or "mainnet"');
+    }
+    
     // Show default configuration to user before proceeding
-    const network = args.network || 'testnet';
     const defaultConfigMessage = getDefaultConfigMessage(network);
     console.error(defaultConfigMessage);
     
@@ -106,34 +150,39 @@ export class DeploymentHandlers {
         args.proposerAccount = proposerAccount.privateKey;
       }
 
-      // Handle chain configuration based on operator preference
+      // Handle chain configuration based on user preference
       let chainConfig;
-      const useDefaultConfig = args.useDefaultChainConfig !== false; // Default to true if not specified
+      const useDefaultConfig = args.useDefaultChainConfig;
+      
+      // Show default configuration for reference
+      const defaultConfig = getDefaultChainConfig(network);
+      const defaultConfigMessage = getDefaultConfigMessage(network);
+      
+      console.error('⚙️  CHAIN CONFIGURATION:');
+      console.error('='.repeat(80));
+      console.error(defaultConfigMessage);
+      console.error('='.repeat(80));
       
       if (useDefaultConfig) {
-        // Use default configuration
-        chainConfig = getDefaultChainConfig(args.network);
-        console.error(`✅ Using recommended default chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+        console.error('✅ Using default chain configuration as specified.');
+        chainConfig = defaultConfig;
       } else {
-        // Use custom configuration - check if individual fields are provided
-        console.error(`⚠️  Warning: Using custom chain configuration (not recommended for production)`);
+        console.error('⚠️  Custom chain configuration requested.');
+        // Check if custom values are provided
         if (args.l2BlockTime !== undefined || args.batchSubmissionFrequency !== undefined || 
             args.outputRootFrequency !== undefined || args.challengePeriod !== undefined) {
           chainConfig = {
-            l2BlockTime: args.l2BlockTime || getDefaultChainConfig(args.network).l2BlockTime,
-            batchSubmissionFrequency: args.batchSubmissionFrequency || getDefaultChainConfig(args.network).batchSubmissionFrequency,
-            outputRootFrequency: args.outputRootFrequency || getDefaultChainConfig(args.network).outputRootFrequency,
-            challengePeriod: args.challengePeriod || getDefaultChainConfig(args.network).challengePeriod
+            l2BlockTime: args.l2BlockTime || defaultConfig.l2BlockTime,
+            batchSubmissionFrequency: args.batchSubmissionFrequency || defaultConfig.batchSubmissionFrequency,
+            outputRootFrequency: args.outputRootFrequency || defaultConfig.outputRootFrequency,
+            challengePeriod: args.challengePeriod || defaultConfig.challengePeriod
           };
-          console.error(`⚙️  Using CUSTOM chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+          console.error(`⚙️  Using CUSTOM chain configuration for ${network}:`, JSON.stringify(chainConfig, null, 2));
         } else if (args.chainConfiguration) {
-          // Use provided chainConfiguration object
           chainConfig = args.chainConfiguration;
-          console.error(`⚙️  Using PROVIDED chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+          console.error(`⚙️  Using PROVIDED chain configuration for ${network}:`, JSON.stringify(chainConfig, null, 2));
         } else {
-          // Fallback to default if custom config was requested but no values provided
-          chainConfig = getDefaultChainConfig(args.network);
-          console.error(`⚠️  Custom configuration requested but no values provided. Using DEFAULT chain configuration for ${args.network}:`, JSON.stringify(chainConfig, null, 2));
+          throw new Error('Custom configuration requested but no custom values provided. Please provide l2BlockTime, batchSubmissionFrequency, outputRootFrequency, and challengePeriod, or set useDefaultChainConfig to true.');
         }
       }
 
@@ -160,8 +209,19 @@ export class DeploymentHandlers {
       };
 
       console.error('📋 Preparing deployment arguments...');
+      
+      // Create a user-friendly confirmation message
+      const confirmationMessage = this.createDeploymentConfirmation(args, backendArgs, useDefaultConfig, network);
+      
+      console.error('🔍 DEPLOYMENT CONFIRMATION REQUIRED:');
+      console.error('='.repeat(80));
+      console.error(confirmationMessage);
+      console.error('='.repeat(80));
+      console.error('⚠️  Please review the configuration above carefully.');
+      console.error('🚀 Proceeding with deployment...');
+      
       try {
-        console.error(`📋 Deployment arguments:`, JSON.stringify(backendArgs, null, 2));
+        console.error(`📋 Backend payload:`, JSON.stringify(backendArgs, null, 2));
       } catch (jsonError) {
         console.error('❌ Failed to stringify backendArgs:', jsonError);
         console.error('📋 backendArgs keys:', Object.keys(backendArgs));
@@ -185,20 +245,50 @@ export class DeploymentHandlers {
         console.error(`❌ Deployment failed: ${result.message}`);
       }
 
-      const configType = useDefaultConfig ? 'recommended default' : 'custom (not recommended)';
+      const configType = useDefaultConfig 
+        ? (network === 'testnet' ? 'recommended default' : 'default (review carefully)')
+        : 'custom (not recommended)';
       
       // Include default configuration info in the response
-      const defaultConfig = getDefaultChainConfig(args.network);
+      const responseDefaultConfig = getDefaultChainConfig(args.network);
       
-      const responseText = `Chain deployment ${result.status === 200 ? 'initiated successfully' : 'failed'} using ${configType} configuration. ${result.data?.stackId ? `Stack ID: ${result.data.stackId}` : ''
-        } ${result.message || ''}
+      let responseText = `🚀 Chain deployment ${result.status === 200 ? 'initiated successfully' : 'failed'} using ${configType} configuration.`;
 
-📋 Default Configuration for ${network} (for reference):
-• Challenge Period: ${defaultConfig.challengePeriod} ${network.toLowerCase() === 'mainnet' ? 'seconds (7 days)' : 'seconds (12 seconds)'}
-• L2 Block Time: ${defaultConfig.l2BlockTime} seconds
-• Output Root Frequency: ${defaultConfig.outputRootFrequency} seconds (${defaultConfig.outputRootFrequency / defaultConfig.l2BlockTime} blocks)
-• Batch Submission Frequency: ${defaultConfig.batchSubmissionFrequency} seconds (${defaultConfig.batchSubmissionFrequency / 12} L1 blocks)`;
-      
+      if (result.status === 200 && result.data?.stackId) {
+        responseText += `
+        📋 DEPLOYMENT INFORMATION:
+        • Stack ID: ${result.data.stackId}
+        • Chain Name: ${args.chainName}
+        • Network: ${network.charAt(0).toUpperCase() + network.slice(1)}
+
+        📋 Default Configuration for ${network} (for reference):
+        • Challenge Period: ${responseDefaultConfig.challengePeriod} ${network.toLowerCase() === 'mainnet' ? 'seconds (7 days)' : 'seconds (12 seconds)'}
+        • L2 Block Time: ${responseDefaultConfig.l2BlockTime} seconds
+        • Output Root Frequency: ${responseDefaultConfig.outputRootFrequency} seconds (${responseDefaultConfig.outputRootFrequency / responseDefaultConfig.l2BlockTime} blocks)
+        • Batch Submission Frequency: ${responseDefaultConfig.batchSubmissionFrequency} seconds (${responseDefaultConfig.batchSubmissionFrequency / 12} L1 blocks)
+
+        ⏱️  DEPLOYMENT TIMELINE:
+        • Expected Duration: 30-40 minutes
+
+        📊 MONITORING OPTIONS:
+        1. **Automatic Monitoring**: The system will check deployment status every 5 minutes
+        2. **Manual Check**: Use \`get_deployment_status\` with Stack ID: ${result.data.stackId}
+        3. **List All**: Use \`list_deployments\` to see all your deployments
+
+        🔍 STATUS CHECKING:
+        • Use: \`get_deployment_status\` with deploymentId: "${result.data.stackId}"
+        • Expected final status: "Deployed" (when complete)
+        • URLs will be provided once deployment is finished
+
+        ⚠️  IMPORTANT NOTES:
+        • Deployment is running in the background - you can close this session
+        • AWS resources are being created (may incur costs)
+        • Check status periodically or wait for completion notification
+        • If deployment fails, you can retry or check logs for details`;
+      } else {
+        responseText += ` ${result.message || ''}`;
+      }
+
       return {
         content: [
           {
@@ -221,44 +311,146 @@ export class DeploymentHandlers {
   }
 
   async handleGetDeploymentStatus(args: { deploymentId: string }) {
-    const deployment = await this.backendClient.getDeployment(args.deploymentId);
+    try {
+      const deployment = await this.backendClient.getDeployment(args.deploymentId);
+      
+      let statusText = `📊 DEPLOYMENT STATUS REPORT
+          ${'='.repeat(50)}
 
-    if (deployment.status === 'Deployed') {
+          🔍 Deployment ID: ${args.deploymentId}
+          📋 Chain Name: ${deployment.config?.chainName || 'Unknown'}
+          🌐 Network: ${deployment.config?.network || 'Unknown'}
+          ⏱️  Status: ${deployment.status}`;
+
+                if (deployment.status === 'Deployed') {
+                  statusText += `
+
+          ✅ DEPLOYMENT COMPLETED SUCCESSFULLY!
+
+          🔗 ACCESS URLs:
+          • L2 RPC URL: ${deployment.metadata?.l2_url || 'Not available'}
+          • Bridge URL: ${deployment.metadata?.bridge_url || 'Not available'}
+
+          🎉 Your chain is now live and ready to use!
+          💡 You can now install additional components like bridge, block explorer, or monitoring.`;
+                } else if (deployment.status === 'Deploying') {
+                  statusText += `
+
+          ⏳ DEPLOYMENT IN PROGRESS:
+          • Expected completion: 30-40 minutes from start time
+
+          💡 TIP: Check back in 5-10 minutes for status updates
+          📊 Use \`list_deployments\` to see all your deployments
+        `;
+      } else if (deployment.status === 'Failed') {
+        statusText += `
+          ❌ DEPLOYMENT FAILED:
+          • Verify your AWS credentials and permissions
+          • Ensure all required parameters are correct
+
+          🔄 You can retry the deployment or contact support for assistance.`;
+                } else if (deployment.status === 'Stopped') {
+                  statusText += `
+
+          ⏸️  DEPLOYMENT STOPPED:
+          • Deployment was manually stopped
+          • Use \`resume_deployment\` to continue
+          • Or use \`terminate_deployment\` to clean up resources`;
+                } else {
+                  statusText += `
+
+          📋 Status Details: ${deployment.status}
+          💡 Check back later for updates or use \`list_deployments\` for overview.
+        `;
+      }
+
       return {
         content: [
           {
             type: 'text',
-            text: `Deployment Status: ${deployment.status}\nL2 URL: ${deployment.metadata.l2_url}\nBridge URL: ${deployment.metadata.bridge_url}`
+            text: statusText
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Error checking deployment status: ${error instanceof Error ? error.message : 'Unknown error'}\n\n💡 Verify the deployment ID is correct and try again.`
           }
         ]
       };
     }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Deployment Status: ${deployment.status}\n`
-        }
-      ]
-    };
   }
 
   async handleListDeployments() {
-    const deployments = await this.backendClient.listDeployments();
+    try {
+      const deployments = await this.backendClient.listDeployments();
 
-    const deploymentList = deployments.map(d =>
-      `- ${d.id}: ${d.status} - ${d.config.chainName || 'Unknown'}`
-    ).join('\n');
+      if (deployments.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `📊 DEPLOYMENT LIST
+                ${'='.repeat(30)}
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Deployments:\n${deploymentList || 'No deployments found'}`
-        }
-      ]
-    };
+                ❌ No deployments found.
+
+                💡 To create a new deployment, use the \`deploy_chain\` tool.
+              `
+            }
+          ]
+        };
+      }
+
+      const deploymentList = deployments.map(d => {
+        const statusEmoji = d.status === 'Deployed' ? '✅' : 
+                           d.status === 'Deploying' ? '⏳' : 
+                           d.status === 'Failed' ? '❌' : 
+                           d.status === 'Stopped' ? '⏸️' : '❓';
+        
+        return `${statusEmoji} ${d.id}: ${d.status} - ${d.config?.chainName || 'Unknown'} (${d.config?.network || 'Unknown'})`;
+      }).join('\n');
+
+      const summary = deployments.reduce((acc, d) => {
+        acc[d.status] = (acc[d.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const summaryText = Object.entries(summary)
+        .map(([status, count]) => `${status}: ${count}`)
+        .join(', ');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `📊 DEPLOYMENT LIST
+              ${'='.repeat(30)}
+
+              📋 Summary: ${summaryText}
+              📊 Total Deployments: ${deployments.length}
+
+              ${deploymentList}
+
+              💡 Use \`get_deployment_status\` with a deployment ID to get detailed information.
+              ⏱️  Deploying status typically takes 30-40 minutes to complete.
+            `
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Error listing deployments: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        ]
+      };
+    }
   }
 
   async handleTerminateDeployment(args: { deploymentId: string }) {
@@ -322,5 +514,71 @@ export class DeploymentHandlers {
         ]
       };
     }
+  }
+
+  private createDeploymentConfirmation(args: any, backendArgs: any, useDefaultConfig: boolean, network: string): string {
+    const configType = useDefaultConfig 
+      ? (network === 'testnet' ? '✅ RECOMMENDED DEFAULT' : '⚠️  DEFAULT (REVIEW CAREFULLY)')
+      : '⚠️  CUSTOM (NOT RECOMMENDED)';
+    const networkDisplay = network.charAt(0).toUpperCase() + network.slice(1);
+    
+    // Mask sensitive information
+    const maskPrivateKey = (key: string) => key ? `${key.substring(0, 8)}...${key.substring(key.length - 8)}` : 'Not provided';
+    const maskPassword = (password: string) => password ? '*'.repeat(Math.min(password.length, 8)) : 'Not provided';
+    
+    let confirmation = `🔧 CHAIN DEPLOYMENT CONFIGURATION SUMMARY
+      ${'='.repeat(60)}
+
+      📋 BASIC INFORMATION:
+      • Chain Name: ${args.chainName}
+      • Network: ${networkDisplay}
+      • Configuration Type: ${configType}
+
+      🌐 NETWORK CONFIGURATION:
+      • L1 RPC URL: ${args.l1RpcUrl}
+      • L1 Beacon URL: ${args.l1BeaconUrl}
+
+      ☁️  AWS CONFIGURATION:
+      • AWS Region: ${args.awsRegion}
+      • AWS Access Key: ${args.awsAccessKey ? `${args.awsAccessKey.substring(0, 8)}...` : 'Not provided'}
+      • AWS Secret Key: ${args.awsSecretKey ? '***MASKED***' : 'Not provided'}
+
+      ⚙️  CHAIN CONFIGURATION:
+      • L2 Block Time: ${backendArgs.l2BlockTime} seconds
+      • Batch Submission Frequency: ${backendArgs.batchSubmissionFrequency} seconds (${backendArgs.batchSubmissionFrequency / 12} L1 blocks)
+      • Output Root Frequency: ${backendArgs.outputRootFrequency} seconds (${backendArgs.outputRootFrequency / backendArgs.l2BlockTime} blocks)
+      • Challenge Period: ${backendArgs.challengePeriod} seconds (${network.toLowerCase() === 'mainnet' ? '7 days' : '12 seconds'})
+
+      👤 ACCOUNT CONFIGURATION:
+      • Admin Account: ${maskPrivateKey(backendArgs.adminAccount)}
+      • Sequencer Account: ${maskPrivateKey(backendArgs.sequencerAccount)}
+      • Batcher Account: ${maskPrivateKey(backendArgs.batcherAccount)}
+      • Proposer Account: ${maskPrivateKey(backendArgs.proposerAccount)}
+
+      🎯 REGISTRATION CONFIGURATION:
+      • Register Candidate: ${args.registerCandidate ? '✅ YES' : '❌ NO'}`;
+
+          if (args.registerCandidate && args.registerCandidateParams) {
+            confirmation += `
+      • Registration Amount: ${args.registerCandidateParams.amount} ETH
+      • Registration Memo: ${args.registerCandidateParams.memo}
+      • Registration Name: ${args.registerCandidateParams.nameInfo}
+      `;
+    }
+
+    confirmation += `
+      💡 CONFIGURATION NOTES:
+      • ${useDefaultConfig 
+          ? (network === 'testnet' 
+              ? 'Using optimized default values recommended for testnet' 
+              : 'Using default values for mainnet - review carefully and consider custom configuration')
+          : 'Using custom values - ensure you understand the implications'}
+      • ${network.toLowerCase() === 'mainnet' ? 'Mainnet deployment - real funds will be used' : 'Testnet deployment - no real funds required'}
+      • Deployment will create AWS resources that may incur costs
+
+      ⚠️  IMPORTANT: Review all parameters above before proceeding.
+    `;
+
+    return confirmation;
   }
 } 

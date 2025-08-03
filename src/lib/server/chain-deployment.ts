@@ -21,10 +21,13 @@ export class ChainDeploymentMCPServer {
   constructor() {
     this.server = new Server(
       {
-        name: 'chain-deployment-mcp-server',
+        name: 'trh-mcp-server',
         version: '1.0.0',
       },
     );
+
+    // Initialize utility handlers immediately since some tools don't need backend client
+    this.utilityHandlers = new UtilityHandlers(null);
 
     this.setupToolHandlers();
   }
@@ -42,7 +45,25 @@ export class ChainDeploymentMCPServer {
     // Initialize handlers with the backend client
     this.deploymentHandlers = new DeploymentHandlers(this.backendClient);
     this.installationHandlers = new InstallationHandlers(this.backendClient);
+    // Update utility handlers with backend client (they were already initialized in constructor)
     this.utilityHandlers = new UtilityHandlers(this.backendClient);
+  }
+
+  private async ensureBackendClient(args: any): Promise<void> {
+    // If backend client is already initialized, use it
+    if (this.isInitialized && this.backendClient) {
+      return;
+    }
+
+    // If credentials are provided in args, use them
+    if (args.backendUrl && args.username && args.password) {
+      console.error('📡 Initializing backend client with provided credentials...');
+      await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+      return;
+    }
+
+    // If no credentials provided and not initialized, throw a helpful error
+    throw new Error('Backend credentials required. Please provide backendUrl, username, and password parameters in your request, or call initialize_backend first with your credentials.');
   }
 
   private setupToolHandlers() {
@@ -70,41 +91,36 @@ export class ChainDeploymentMCPServer {
             return await this.utilityHandlers!.handleInitializeBackend(args as { backendUrl: string; username: string; password: string });
 
           case 'deploy_chain':
-            // Initialize backend client if credentials provided or use existing one
-            if (args.backendUrl && args.username && args.password) {
-              console.error('📡 Initializing backend client with provided credentials...');
-              await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
-            } else if (!this.isInitialized || !this.backendClient) {
-              throw new Error('Backend client not initialized. Please call initialize_backend first or provide credentials.');
-            }
+            // Ensure backend client is initialized
+            await this.ensureBackendClient(args);
             return await this.deploymentHandlers!.handleDeployChain(args);
 
           case 'get_deployment_status':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.deploymentHandlers!.handleGetDeploymentStatus({ deploymentId: args.deploymentId as string });
 
           case 'list_deployments':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.deploymentHandlers!.handleListDeployments();
 
           case 'terminate_deployment':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.deploymentHandlers!.handleTerminateDeployment({ deploymentId: args.deploymentId as string });
 
           case 'stop_deployment':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.deploymentHandlers!.handleStopDeployment({ deploymentId: args.deploymentId as string });
 
           case 'resume_deployment':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.deploymentHandlers!.handleResumeDeployment({ deploymentId: args.deploymentId as string });
 
           case 'install_bridge':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.installationHandlers!.handleInstallBridge({ deploymentId: args.deploymentId as string });
 
           case 'install_block_explorer':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.installationHandlers!.handleInstallBlockExplorer({
               deploymentId: args.deploymentId as string,
               databaseUsername: args.databaseUsername as string,
@@ -114,36 +130,37 @@ export class ChainDeploymentMCPServer {
             });
 
           case 'install_monitoring':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.installationHandlers!.handleInstallMonitoring({
               deploymentId: args.deploymentId as string,
               grafanaPassword: args.grafanaPassword as string
             });
 
           case 'uninstall_bridge':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.installationHandlers!.handleUninstallBridge({ deploymentId: args.deploymentId as string });
 
           case 'uninstall_block_explorer':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.installationHandlers!.handleUninstallBlockExplorer({ deploymentId: args.deploymentId as string });
 
           case 'uninstall_monitoring':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.installationHandlers!.handleUninstallMonitoring({ deploymentId: args.deploymentId as string });
 
           case 'get_accounts_from_seed':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            // This tool doesn't need backend credentials - it only uses L1 RPC
             return await this.utilityHandlers!.handleGetAccountsFromSeed({
               seedPhrase: args.seedPhrase as string,
               l1RpcUrl: args.l1RpcUrl as string
             });
 
           case 'test_backend_connection':
-            await this.initializeBackendClient(args.backendUrl as string, args.username as string, args.password as string);
+            await this.ensureBackendClient(args);
             return await this.utilityHandlers!.handleTestConnection();
 
           case 'get_default_chain_config':
+            // This tool doesn't need backend credentials - it returns static configuration data
             return await this.utilityHandlers!.handleGetDefaultChainConfig({ network: args.network as string });
 
           default:
